@@ -1,0 +1,31 @@
+/* 
+ * DHtmlX Gantt CSS - You need to download this from:
+ * https://dhtmlx.com/docs/products/dhtmlxGantt/
+ * 
+ * For GPL version: Use the free GPL 2.0 version from GitHub
+ * For Commercial: Purchase license from DHtmlX
+ * 
+ * Alternative: Use CDN link in template
+ */
+
+/* CDN Alternative - Add this to your template instead:
+<link rel="stylesheet" href="https://cdn.dhtmlx.com/gantt/edge/dhtmlxgantt.css">
+*/
+
+/* Custom styles for Kanboard integration */
+.dhtmlx_cal_container {
+    font-family: Arial, sans-serif;
+}
+
+.gantt_grid_scale .gantt_grid_head_cell,
+.gantt_task_scale .gantt_scale_cell {
+    background: #f4f4f4;
+    border-color: #cecece;
+}
+
+.gantt_task_progress {
+    text-align: left;
+    padding-left: 5px;
+    color: #fff;
+    font-weight: bold;
+}
