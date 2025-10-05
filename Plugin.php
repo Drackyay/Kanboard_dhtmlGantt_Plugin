@@ -3,45 +3,47 @@
 namespace Kanboard\Plugin\DhtmlGantt;
 
 use Kanboard\Core\Plugin\Base;
+use Kanboard\Core\Security\Role;
 use Kanboard\Core\Translator;
+use Kanboard\Plugin\DhtmlGantt\Formatter\ProjectGanttFormatter;
+use Kanboard\Plugin\DhtmlGantt\Formatter\TaskGanttFormatter;
 
-/**
- * DHtmlX Gantt Plugin for Kanboard
- *
- * @package  Kanboard\Plugin\DhtmlGantt
- * @author   Your Name
- */
 class Plugin extends Base
 {
     public function initialize()
     {
-        // Template hooks
-        $this->template->hook->attach('template:project:sidebar', 'DhtmlGantt:project/sidebar');
-        $this->template->hook->attach('template:project-header:view-switcher', 'DhtmlGantt:project-header/view-switcher');
-        $this->template->hook->attach('template:project-list:menu:before', 'DhtmlGantt:project-list/menu');
-        
-        // CSS/JS assets
-        $this->hook->on('template:layout:css', array('template' => 'plugins/DhtmlGantt:assets/dhtmlxgantt.css'));
-        $this->hook->on('template:layout:js', array('template' => 'plugins/DhtmlGantt:assets/dhtmlxgantt.js'));
+        $this->route->addRoute('dhtmlgantt/:project_id', 'TaskGanttController', 'show', 'plugin');
+        $this->route->addRoute('dhtmlgantt/:project_id/sort/:sorting', 'TaskGanttController', 'show', 'plugin');
+
+        $this->projectAccessMap->add('ProjectGanttController', 'save', Role::PROJECT_MANAGER);
+        $this->projectAccessMap->add('TaskGanttController', 'save', Role::PROJECT_MEMBER);
+
+        $this->template->hook->attach('template:project-header:view-switcher', 'DhtmlGantt:project_header/views');
+        $this->template->hook->attach('template:project:dropdown', 'DhtmlGantt:project/dropdown');
+        $this->template->hook->attach('template:project-list:menu:after', 'DhtmlGantt:project_list/menu');
+        $this->template->hook->attach('template:config:sidebar', 'DhtmlGantt:config/sidebar');
+
+        // Load DHtmlX Gantt library first
+        $this->hook->on('template:layout:js', array('template' => 'plugins/DhtmlGantt/Assets/dhtmlxgantt.js'));
+        $this->hook->on('template:layout:css', array('template' => 'plugins/DhtmlGantt/Assets/dhtmlxgantt.css'));
+
+        // Load our custom Gantt implementation after the library
+        $this->hook->on('template:layout:js', array('template' => 'plugins/DhtmlGantt/Assets/gantt.js'));
+        $this->hook->on('template:layout:js', array('template' => 'plugins/DhtmlGantt/Assets/dhtmlx-init.js'));
+        $this->hook->on('template:layout:css', array('template' => 'plugins/DhtmlGantt/Assets/gantt.css'));
+
+        $this->container['projectGanttFormatter'] = $this->container->factory(function ($c) {
+            return new ProjectGanttFormatter($c);
+        });
+
+        $this->container['taskGanttFormatter'] = $this->container->factory(function ($c) {
+            return new TaskGanttFormatter($c);
+        });
     }
 
     public function onStartup()
     {
         Translator::load($this->languageModel->getCurrentLanguage(), __DIR__.'/Locale');
-    }
-
-    public function getClasses()
-    {
-        return array(
-            'Plugin\DhtmlGantt\Controller' => array(
-                'ProjectGanttController',
-                'TaskGanttController',
-            ),
-            'Plugin\DhtmlGantt\Formatter' => array(
-                'ProjectGanttFormatter',
-                'TaskGanttFormatter',
-            ),
-        );
     }
 
     public function getPluginName()
@@ -56,7 +58,7 @@ class Plugin extends Base
 
     public function getPluginAuthor()
     {
-        return 'Your Name';
+        return 'USCCS401 Team14';
     }
 
     public function getPluginVersion()
@@ -64,13 +66,13 @@ class Plugin extends Base
         return '1.0.0';
     }
 
-    public function getCompatibleVersion()
-    {
-        return '>=1.2.3';
-    }
-
     public function getPluginHomepage()
     {
         return 'https://github.com/yourusername/kanboard-dhtmlx-gantt';
+    }
+
+    public function getCompatibleVersion()
+    {
+        return '>1.2.3';
     }
 }

@@ -12,10 +12,6 @@ return array(
     'Zoom In' => 'Zoom In',
     'Zoom Out' => 'Zoom Out',
     'Fit to Screen' => 'Fit to Screen',
-    'Export PDF' => 'Export PDF',
-    'Export Excel' => 'Export Excel',
-    'Critical Path' => 'Critical Path',
-    'Critical Path ON' => 'Critical Path ON',
     
     // View modes
     'Daily View' => 'Daily View',
@@ -45,9 +41,4 @@ return array(
     'Error updating task' => 'Error updating task',
     'Error deleting task' => 'Error deleting task',
     
-    // Export
-    'Exporting to PDF...' => 'Exporting to PDF...',
-    'Exporting to Excel...' => 'Exporting to Excel...',
-    'Export completed' => 'Export completed',
-    'Export failed' => 'Export failed',
 );

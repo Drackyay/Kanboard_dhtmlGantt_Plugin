@@ -1,4 +1,4 @@
-<li <?= $this->app->checkMenuSelection('DhtmlGantt:ProjectGanttController', 'show') ?>>
+<li <?= $this->app->checkMenuSelection('TaskGanttController', 'show') ?>>
     <i class="fa fa-sliders fa-fw"></i>
-    <?= $this->url->link(t('Gantt'), 'DhtmlGantt:ProjectGanttController', 'show', array('project_id' => $project['id'])) ?>
+    <?= $this->url->link(t('Gantt'), 'TaskGanttController', 'show', array('project_id' => $project['id'], 'plugin' => 'DhtmlGantt')) ?>
 </li>

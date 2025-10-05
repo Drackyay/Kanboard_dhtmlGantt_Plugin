@@ -1,0 +1,166 @@
+/*
+ * Kanboard DHtmlX Gantt Plugin - Custom Styles
+ * 
+ * Additional CSS for Kanboard integration
+ */
+
+/* DHtmlX Gantt Container Styles */
+.dhtmlx-gantt-container {
+    border: 1px solid #ddd;
+    background: #fff;
+    margin: 20px 0;
+}
+
+.dhtmlx-gantt-toolbar {
+    background: #f8f9fa;
+    border-bottom: 1px solid #ddd;
+    padding: 10px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.dhtmlx-toolbar-separator {
+    width: 1px;
+    height: 20px;
+    background: #ddd;
+    margin: 0 5px;
+}
+
+.dhtmlx-gantt-info {
+    background: #f8f9fa;
+    border-top: 1px solid #ddd;
+    padding: 15px;
+    display: flex;
+    gap: 30px;
+}
+
+.dhtmlx-info-section h3 {
+    margin: 0 0 10px 0;
+    font-size: 14px;
+    font-weight: bold;
+}
+
+.dhtmlx-stats {
+    display: flex;
+    gap: 20px;
+}
+
+.dhtmlx-stat-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+.dhtmlx-stat-label {
+    font-size: 12px;
+    color: #666;
+}
+
+.dhtmlx-stat-value {
+    font-size: 18px;
+    font-weight: bold;
+    color: #333;
+}
+
+.dhtmlx-legend {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+}
+
+.dhtmlx-legend-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.dhtmlx-legend-color {
+    width: 16px;
+    height: 16px;
+    border-radius: 3px;
+}
+
+/* DHtmlX Gantt Task Priority Styles */
+.dhtmlx-priority-high .gantt_task_line {
+    background: #e74c3c !important;
+    border-color: #c0392b !important;
+}
+
+.dhtmlx-priority-medium .gantt_task_line {
+    background: #f39c12 !important;
+    border-color: #e67e22 !important;
+}
+
+.dhtmlx-priority-low .gantt_task_line {
+    background: #3498db !important;
+    border-color: #2980b9 !important;
+}
+
+.dhtmlx-readonly .gantt_task_line {
+    opacity: 0.6;
+}
+
+.dhtmlx-highlighted .gantt_task_line {
+    box-shadow: 0 0 10px rgba(102, 126, 234, 0.6);
+}
+
+/* Button Styles */
+
+.btn-dhtmlx-view.active {
+    background-color: #667eea !important;
+    color: white !important;
+}
+
+/* Progress Text */
+.dhtmlx-progress-text {
+    color: #fff;
+    font-weight: bold;
+    text-shadow: 1px 1px 1px rgba(0,0,0,0.5);
+}
+
+/* Loading State */
+.dhtmlx-loading {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 400px;
+    background: #f8f9fa;
+    border: 1px solid #ddd;
+}
+
+.dhtmlx-loading-text {
+    font-size: 16px;
+    color: #666;
+}
+
+/* Error State */
+.dhtmlx-error {
+    padding: 40px;
+    text-align: center;
+    background: #f8f9fa;
+    border: 2px dashed #dee2e6;
+    margin: 20px 0;
+}
+
+.dhtmlx-error h3 {
+    color: #dc3545;
+    margin-bottom: 20px;
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+    .dhtmlx-gantt-toolbar {
+        flex-wrap: wrap;
+        gap: 5px;
+    }
+    
+    .dhtmlx-gantt-info {
+        flex-direction: column;
+        gap: 15px;
+    }
+    
+    .dhtmlx-stats {
+        justify-content: space-around;
+    }
+}
