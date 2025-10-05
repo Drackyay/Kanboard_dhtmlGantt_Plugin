@@ -51,13 +51,17 @@
     </div>
 </div>
 
+<!-- DHTMLX Gantt Library - CDN Version -->
+<link rel="stylesheet" href="https://cdn.dhtmlx.com/gantt/edge/dhtmlxgantt.css">
+<script src="https://cdn.dhtmlx.com/gantt/edge/dhtmlxgantt.js"></script>
+
 <div id="dhtmlx-gantt-container" style="width: 100%; height: 600px; border: 1px solid #ccc;"></div>
 
 <script type="text/javascript">
 document.addEventListener('DOMContentLoaded', function() {
     // Configure DHtmlX Gantt
-    gantt.config.date_format = "%Y-%m-%d %H:%i";
-    gantt.config.xml_date = "%Y-%m-%d %H:%i";
+    gantt.config.date_format = "%Y-%m-%d";
+    gantt.config.xml_date = "%Y-%m-%d";
     gantt.config.scale_unit = "day";
     gantt.config.date_scale = "%d %M";
     gantt.config.subscales = [
@@ -73,20 +77,19 @@ document.addEventListener('DOMContentLoaded', function() {
         export_api: true
     });
     
-    // Configure columns
+    // Configure columns - simplified for DHTMLX Gantt format
     gantt.config.columns = [
-        {name: "text", label: "Task Name", tree: true, width: 200, resize: true},
-        {name: "start_date", label: "Start Date", align: "center", width: 80, resize: true},
-        {name: "duration", label: "Duration", align: "center", width: 60, resize: true},
+        {name: "text", label: "Task Name", tree: true, width: 250, resize: true},
+        {name: "start_date", label: "Start Date", align: "center", width: 100, resize: true},
+        {name: "duration", label: "Duration", align: "center", width: 70, resize: true},
         {name: "progress", label: "Progress", align: "center", width: 80, resize: true},
-        {name: "priority", label: "Priority", align: "center", width: 80, resize: true},
         {name: "add", label: "", width: 44}
     ];
     
-    // Custom task colors
+    // Custom task styling based on progress
     gantt.templates.task_class = function(start, end, task) {
-        if (task.priority === 'high') return 'gantt-high-priority';
-        if (task.priority === 'low') return 'gantt-low-priority';
+        if (task.progress >= 0.8) return 'gantt-high-progress';
+        if (task.progress <= 0.2) return 'gantt-low-progress';
         return '';
     };
     
@@ -98,8 +101,8 @@ document.addEventListener('DOMContentLoaded', function() {
     // Initialize Gantt
     gantt.init("dhtmlx-gantt-container");
     
-    // Load data
-    gantt.load("<?= $this->url->href('DhtmlGantt:ProjectGanttController', 'tasks', array('project_id' => $project['id'])) ?>");
+    // Load data from new clean JSON endpoint
+    gantt.load("/gantt/json/<?= $project['id'] ?>");
     
     // Data processor for CRUD operations
     var dp = new gantt.dataProcessor("<?= $this->url->href('DhtmlGantt:ProjectGanttController', 'update', array('project_id' => $project['id'])) ?>");
@@ -201,14 +204,14 @@ document.addEventListener('DOMContentLoaded', function() {
     gap: 10px;
 }
 
-.gantt-high-priority .gantt_task_line {
-    background: #e74c3c !important;
-    border-color: #c0392b !important;
+.gantt-high-progress .gantt_task_line {
+    background: #27ae60 !important;
+    border-color: #229954 !important;
 }
 
-.gantt-low-priority .gantt_task_line {
-    background: #3498db !important;
-    border-color: #2980b9 !important;
+.gantt-low-progress .gantt_task_line {
+    background: #e74c3c !important;
+    border-color: #c0392b !important;
 }
 
 #dhtmlx-gantt-container {

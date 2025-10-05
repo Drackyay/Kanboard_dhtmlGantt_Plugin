@@ -19,10 +19,10 @@ class ProjectGanttController extends BaseController
     {
         $project = $this->getProject();
         
-        $this->response->html($this->helper->layout->project('DhtmlGantt:project_gantt/show', array(
+        $this->response->html($this->helper->layout->app('DhtmlGantt:project_gantt/show', array(
             'project' => $project,
             'title' => t('Gantt chart for "%s"', $project['name']),
-        ), 'DhtmlGantt:project_gantt/sidebar'));
+        )));
     }
 
     /**

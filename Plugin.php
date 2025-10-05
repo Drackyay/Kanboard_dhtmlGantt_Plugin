@@ -18,11 +18,13 @@ class Plugin extends Base
         // Template hooks
         $this->template->hook->attach('template:project:sidebar', 'DhtmlGantt:project/sidebar');
         $this->template->hook->attach('template:project-header:view-switcher', 'DhtmlGantt:project-header/view-switcher');
-        $this->template->hook->attach('template:project-list:menu:before', 'DhtmlGantt:project-list/menu');
         
-        // CSS/JS assets
-        $this->hook->on('template:layout:css', array('template' => 'plugins/DhtmlGantt:assets/dhtmlxgantt.css'));
-        $this->hook->on('template:layout:js', array('template' => 'plugins/DhtmlGantt:assets/dhtmlxgantt.js'));
+        // CSS/JS assets - Using CDN in template instead of local files
+        // Local asset loading disabled - using CDN links in template
+        
+        // Custom routes for Gantt functionality
+        $this->route->addRoute('/gantt/json/:project_id', 'GanttController', 'data', 'DhtmlGantt');
+        $this->route->addRoute('/gantt/show/:project_id', 'ProjectGanttController', 'show', 'DhtmlGantt');
     }
 
     public function onStartup()
@@ -35,11 +37,11 @@ class Plugin extends Base
         return array(
             'Plugin\DhtmlGantt\Controller' => array(
                 'ProjectGanttController',
-                'TaskGanttController',
+                'GanttController',
             ),
             'Plugin\DhtmlGantt\Formatter' => array(
                 'ProjectGanttFormatter',
-                'TaskGanttFormatter',
+                'GanttDataFormatter',
             ),
         );
     }
