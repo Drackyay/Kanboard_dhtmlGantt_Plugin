@@ -94,6 +94,16 @@ This plugin integrates DHTMLX Gantt charts into Kanboard, providing USC student 
 **Authentication:** Required (Kanboard session)  
 **Response:** JSON in DHTMLX Gantt format
 
+**Optional Filters:**
+- `column_id` - Filter tasks by Kanboard column (workflow stage)
+- `swimlane_id` - Filter tasks by Kanboard swimlane (team/category)
+
+**Example URLs:**
+- All tasks: `/gantt/json/1`
+- By column: `/gantt/json/1?column_id=3`
+- By swimlane: `/gantt/json/1?swimlane_id=2`
+- Both filters: `/gantt/json/1?column_id=3&swimlane_id=2`
+
 ### Response Format
 
 ```json
@@ -157,6 +167,60 @@ This plugin integrates DHTMLX Gantt charts into Kanboard, providing USC student 
 - **Kanboard "blocks" (Link ID 2)** → DHTMLX type "0" (Finish-to-Start)
 - **Kanboard "is blocked by" (Link ID 3)** → DHTMLX type "0" (reversed)
 - **Other link types** → Ignored for clean visualization
+
+---
+
+## Filtering Tasks
+
+### Column Filtering
+
+Filter tasks by their Kanboard column (workflow stage):
+
+**Example:** Show only tasks in "In Progress" column (column_id=3)
+```
+http://localhost:8080/gantt/json/1?column_id=3
+```
+
+**Use Cases:**
+- View only tasks in testing phase
+- Focus on backlog items
+- Show completed tasks only
+
+### Swimlane Filtering
+
+Filter tasks by their Kanboard swimlane (team/category):
+
+**Example:** Show only tasks in "Team Alpha" swimlane (swimlane_id=2)
+```
+http://localhost:8080/gantt/json/1?swimlane_id=2
+```
+
+**Use Cases:**
+- View tasks for specific team
+- Show tasks by feature category
+- Filter by priority swimlanes
+
+### Combined Filtering
+
+Apply both filters together for precise task views:
+
+**Example:** Tasks in "In Progress" column AND "Team Alpha" swimlane
+```
+http://localhost:8080/gantt/json/1?column_id=3&swimlane_id=2
+```
+
+### How to Find IDs
+
+**Column IDs:**
+1. Go to your Kanboard project
+2. Hover over a column header
+3. Column ID is in the URL or visible in admin settings
+
+**Swimlane IDs:**
+1. Go to Project Settings → Swimlanes
+2. Swimlane IDs are shown in the list
+
+**Note:** Dependencies (links) are automatically filtered - only arrows between visible tasks will appear.
 
 ---
 
