@@ -1,12 +1,11 @@
-version: "3.8"
-
 services:
   kanboard:
     image: kanboard/kanboard:latest
-    container_name: kanboard
+    container_name: kanboard-app
     ports:
       - "8080:80"
     volumes:
       - ./data:/var/www/app/data
       - ./plugins:/var/www/app/plugins
+      - ./config.php:/var/www/app/config.php
     restart: unless-stopped
