@@ -24,7 +24,8 @@ class TaskGanttController extends BaseController
         if (isset($_GET['search'])) {
             $search = $this->helper->projectHeader->getSearchQuery($project);
         } else {
-            $search = 'n';
+            // $search = 'n';
+            $search = 'status:open status:closed'; // want to show all tasks or only open ones
         }
 
         $sorting = $this->request->getStringParam('sorting', '');

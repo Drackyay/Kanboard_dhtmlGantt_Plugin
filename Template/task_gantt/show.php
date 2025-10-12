@@ -52,7 +52,18 @@
             </div>
 
             <!-- DHtmlX Gantt Chart Container -->
-            <div id="dhtmlx-gantt-chart" style="width: 100%; height: 600px;"></div>
+            <!-- <div id="dhtmlx-gantt-chart" style="width: 100%; height: 600px;"></div> -->
+
+            <div id="dhtmlx-gantt-chart" 
+     style="width: 100%; height: 600px;"
+     data-tasks='<?= htmlspecialchars(json_encode($tasks), ENT_QUOTES, 'UTF-8') ?>'
+     data-project-id="<?= $project['id'] ?>"
+     data-update-url="<?= $this->url->href('TaskGanttController', 'save', array('project_id' => $project['id'], 'plugin' => 'DhtmlGantt')) ?>"
+     data-create-url="<?= $this->url->href('TaskGanttController', 'create', array('project_id' => $project['id'], 'plugin' => 'DhtmlGantt')) ?>"
+     data-remove-url="<?= $this->url->href('TaskGanttController', 'remove', array('project_id' => $project['id'], 'plugin' => 'DhtmlGantt')) ?>"
+     data-create-link-url="<?= $this->url->href('TaskGanttController', 'dependency', array('project_id' => $project['id'], 'plugin' => 'DhtmlGantt')) ?>"
+     data-remove-link-url="<?= $this->url->href('TaskGanttController', 'removeDependency', array('project_id' => $project['id'], 'plugin' => 'DhtmlGantt')) ?>">
+</div>
             
             <!-- Task Information Panel -->
             <div class="dhtmlx-gantt-info">
