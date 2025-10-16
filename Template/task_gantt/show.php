@@ -105,41 +105,54 @@
             </div>
         </div>
 
-        <script type="text/javascript">
-        // Debug: Check what tasks we have
-        console.log('Raw tasks from PHP:', <?= json_encode($tasks) ?>);
-        
-        // Set data for external script (CSP-compliant)
-        window.taskData = <?= json_encode($tasks) ?> || {data: [], links: []};
-        window.ganttUrls = {
-            update: "<?= $this->url->href('TaskGanttController', 'save', array('project_id' => $project['id'], 'plugin' => 'DhtmlGantt')) ?>",
-            create: "<?= $this->url->href('TaskGanttController', 'create', array('project_id' => $project['id'], 'plugin' => 'DhtmlGantt')) ?>",
-            remove: "<?= $this->url->href('TaskGanttController', 'remove', array('project_id' => $project['id'], 'plugin' => 'DhtmlGantt')) ?>",
-            createLink: "<?= $this->url->href('TaskGanttController', 'dependency', array('project_id' => $project['id'], 'plugin' => 'DhtmlGantt')) ?>",
-            removeLink: "<?= $this->url->href('TaskGanttController', 'removeDependency', array('project_id' => $project['id'], 'plugin' => 'DhtmlGantt')) ?>"
-        };
-        
-        // Add some sample data if no tasks exist for testing
-        if (!window.taskData || (!window.taskData.data && !Array.isArray(window.taskData)) || 
-            (window.taskData.data && window.taskData.data.length === 0) ||
-            (Array.isArray(window.taskData) && window.taskData.length === 0)) {
-            
-            console.log('No tasks found, adding sample data for testing');
-            window.taskData = {
-                data: [
-                    {
-                        id: 1,
-                        text: "Sample Task",
-                        start_date: "<?= date('Y-m-d H:i') ?>",
-                        duration: 3,
-                        progress: 0.5,
-                        priority: "normal"
-                    }
-                ],
-                links: []
-            };
-        }
-        </script>
+
+    <script type="text/javascript">
+    console.log('Raw tasks from PHP:', <?= json_encode($tasks) ?>);
+
+    // Pass PHP data to JS
+    window.taskData = <?= json_encode($tasks) ?> || { data: [], links: [] };
+
+    window.ganttUrls = {
+        update: "<?= $this->url->href('TaskGanttController', 'save', array('project_id' => $project['id'], 'plugin' => 'DhtmlGantt')) ?>",
+        create: "<?= $this->url->href('TaskGanttController', 'create', array('project_id' => $project['id'], 'plugin' => 'DhtmlGantt')) ?>",
+        remove: "<?= $this->url->href('TaskGanttController', 'remove', array('project_id' => $project['id'], 'plugin' => 'DhtmlGantt')) ?>",
+        createLink: "<?= $this->url->href('TaskGanttController', 'dependency', array('project_id' => $project['id'], 'plugin' => 'DhtmlGantt')) ?>",
+        removeLink: "<?= $this->url->href('TaskGanttController', 'removeDependency', array('project_id' => $project['id'], 'plugin' => 'DhtmlGantt')) ?>"
+    };
+
+    gantt.config.show_links = true;
+    gantt.config.links = {
+        finish_to_start: "0",
+        start_to_start: "1",
+        finish_to_finish: "2",
+        start_to_finish: "3"
+    };
+
+    gantt.init("dhtmlx-gantt-chart");
+
+    if (window.taskData && (window.taskData.data || Array.isArray(window.taskData))) {
+        gantt.parse(window.taskData);
+    } else {
+        gantt.parse({ data: [], links: [] });
+    }
+
+    gantt.attachEvent("onAfterLinkAdd", function(id, link) {
+        fetch(window.ganttUrls.createLink, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(link)
+        });
+    });
+
+    gantt.attachEvent("onAfterLinkDelete", function(id, link) {
+        fetch(window.ganttUrls.removeLink, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ id: id })
+        });
+    });
+</script>
+
 
     </div>
 

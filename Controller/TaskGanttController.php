@@ -135,77 +135,44 @@ class TaskGanttController extends BaseController
     }
 
     /**
+ * Alias for DHTMLX Gantt link creation
+ * (Handles frontend POST to ?action=link)
+ */
+public function link()
+{
+    $project = $this->getProject();
+    $data = $this->request->getJson();
+
+    $source = isset($data['source']) ? (int) $data['source'] : 0;
+    $target = isset($data['target']) ? (int) $data['target'] : 0;
+
+    if ($source <= 0 || $target <= 0) {
+        return $this->response->json(['action' => 'error', 'message' => 'Invalid task IDs'], 400);
+    }
+
+    // Create internal link (child-of relationship)
+    $result = $this->taskLinkModel->create([
+        'task_id'          => $target,
+        'opposite_task_id' => $source,
+        'link_id'          => 1, // "is a child of"
+    ]);
+
+    if ($result) {
+        return $this->response->json(['action' => 'inserted', 'tid' => $result]);
+    } else {
+        return $this->response->json(['action' => 'error', 'message' => 'Unable to create link'], 500);
+    }
+}
+
+
+    /**
      * Save task dependency (link connection)
      */
     public function dependency()
-    {
-        $this->getProject();
-        $data = $this->request->getJson();
-        
-        if (empty($data['source']) || empty($data['target'])) {
-            $this->response->json(array('result' => 'error', 'message' => 'Missing task IDs'), 400);
-            return;
-        }
+{
+    $this->link();
+}
 
-        $sourceTaskId = (int) $data['source'];
-        $targetTaskId = (int) $data['target'];
-
-        // Validate that both tasks exist and belong to the current project
-        $project = $this->getProject();
-        $sourceTask = $this->taskFinderModel->getById($sourceTaskId);
-        $targetTask = $this->taskFinderModel->getById($targetTaskId);
-
-        if (!$sourceTask || !$targetTask) {
-            $this->response->json(array('result' => 'error', 'message' => 'One or both tasks not found'), 404);
-            return;
-        }
-
-        if ($sourceTask['project_id'] != $project['id'] || $targetTask['project_id'] != $project['id']) {
-            $this->response->json(array('result' => 'error', 'message' => 'Tasks must belong to the same project'), 403);
-            return;
-        }
-
-        // Check for circular dependencies
-        if ($this->wouldCreateCircularDependency($sourceTaskId, $targetTaskId)) {
-            $this->response->json(array('result' => 'error', 'message' => 'Circular dependency detected'), 400);
-            return;
-        }
-
-        // Create new dependency
-        $result = $this->taskLinkModel->create(array(
-            'task_id' => $targetTaskId,
-            'opposite_task_id' => $sourceTaskId,
-            'link_id' => 1, // Default link type (relates to)
-        ));
-
-        if ($result) {
-            $this->response->json(array('result' => 'ok', 'message' => 'Dependency created successfully'), 201);
-        } else {
-            $this->response->json(array('result' => 'error', 'message' => 'Unable to create dependency'), 500);
-        }
-    }
-
-    /**
-     * Remove task dependency
-     */
-    public function removeDependency()
-    {
-        $this->getProject();
-        $data = $this->request->getJson();
-        
-        if (empty($data['id'])) {
-            $this->response->json(array('result' => 'error', 'message' => 'Missing link ID'), 400);
-            return;
-        }
-
-        $linkId = (int) $data['id'];
-        
-        if ($this->taskLinkModel->remove($linkId)) {
-            $this->response->json(array('result' => 'ok', 'message' => 'Dependency removed successfully'), 200);
-        } else {
-            $this->response->json(array('result' => 'error', 'message' => 'Unable to remove dependency'), 500);
-        }
-    }
 
     /**
      * Check if creating a dependency would create a circular reference
