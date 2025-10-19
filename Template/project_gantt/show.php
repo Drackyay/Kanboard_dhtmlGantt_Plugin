@@ -41,34 +41,51 @@
     </div>
 </div>
 
-<div id="dhtmlx-gantt-container" style="display: none;">
-    <!-- This will load the full Gantt chart -->
-</div>
+<!-- The actual Gantt container -->
+<div id="dhtmlx-gantt-container" style="width:100%; height:600px; display:none;"></div>
 
 <script type="text/javascript">
-document.addEventListener('DOMContentLoaded', function() {
-    // Load project statistics
-    loadProjectStatistics();
-    
-    // Handle Gantt view button
-    document.getElementById('load-gantt-view').addEventListener('click', function() {
-        window.location.href = '<?= $this->url->href('TaskGanttController', 'show', array('project_id' => $project['id'], 'plugin' => 'DhtmlGantt')) ?>';
-    });
-});
+(function () {
+  const dataUrl = '<?= $this->url->to(
+      "ProjectGanttController",
+      "tasks",
+      ["project_id" => $project["id"]],
+      false,
+      "",
+      "DhtmlGantt"
+  ) ?>';
 
-function loadProjectStatistics() {
-    // This would typically load via AJAX
-    // For now, we'll redirect to the full Gantt view
-    fetch('<?= $this->url->href('TaskGanttController', 'show', array('project_id' => $project['id'], 'plugin' => 'DhtmlGantt')) ?>')
-        .then(function() {
-            // Update stats based on project data
-            // This is a simplified version
-            document.getElementById('total-tasks').textContent = '<?= count($project['tasks'] ?? []) ?>';
+  let ganttInitialized = false;
+
+  document.addEventListener('DOMContentLoaded', function () {
+    // Basic stats (you can replace with real counts later)
+    document.getElementById('total-tasks').textContent = '0';
+
+    const btn = document.getElementById('load-gantt-view');
+    btn.addEventListener('click', function () {
+      const container = document.getElementById('dhtmlx-gantt-container');
+      container.style.display = 'block';
+
+      if (!ganttInitialized && window.gantt) {
+        // Ensure link field mapping exists (also set in dhtmlx-init.js)
+        gantt.config.links = { id:"id", source:"source", target:"target", type:"type" };
+
+        gantt.init('dhtmlx-gantt-container');
+        ganttInitialized = true;
+      }
+
+      // Fetch { data, links } and draw arrows
+      fetch(dataUrl, { credentials: 'same-origin' })
+        .then(r => r.json())
+        .then(json => {
+          // json should be: { data: [...], links: [...] }
+          gantt.clearAll();
+          gantt.parse(json);
         })
-        .catch(function(error) {
-            console.log('Could not load project statistics:', error);
-        });
-}
+        .catch(console.error);
+    });
+  });
+})();
 </script>
 
 <style>

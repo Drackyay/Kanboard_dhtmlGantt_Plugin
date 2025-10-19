@@ -171,7 +171,7 @@ class ProjectGanttFormatter extends Base
     }
 
     /**
-     * Format task dependencies/links
+     * Format task dependencies/links (alias-free for PicoDb/SQLite)
      *
      * @param array $tasks
      * @return array
@@ -179,11 +179,60 @@ class ProjectGanttFormatter extends Base
     private function formatLinks(array $tasks)
     {
         $links = array();
-        
-        // Get task dependencies from Kanboard
-        // Note: This would need to be implemented based on your dependency system
-        // For now, return empty array
-        
+        if (empty($tasks)) {
+            return $links;
+        }
+
+        // Only include links among the tasks we're rendering
+        $taskIds   = array_map(function ($t) { return (int) $t['id']; }, $tasks);
+        $taskIdSet = array_flip($taskIds);
+
+        // Query internal links (no aliases)
+        $rows = $this->db->table('task_has_links')
+            ->join('links', 'id', 'link_id') // links.id = task_has_links.link_id
+            ->columns(
+                'task_has_links.id',
+                'links.label',
+                'task_has_links.task_id',
+                'task_has_links.opposite_task_id'
+            )
+            ->in('task_has_links.task_id', $taskIds)
+            ->findAll();
+
+        foreach ($rows as $r) {
+            // PicoDb sometimes strips table qualifiers — support both forms
+            $left  = (int) ( $r['task_id']          ?? ($r['task_has_links.task_id'] ?? 0) );
+            $right = (int) ( $r['opposite_task_id'] ?? ($r['task_has_links.opposite_task_id'] ?? 0) );
+            $label =        ( $r['label']           ?? ($r['links.label'] ?? '') );
+            $rowId = (int) ( $r['id']               ?? ($r['task_has_links.id'] ?? 0) );
+
+            if ($left === 0 || $right === 0) {
+                continue;
+            }
+            if (!isset($taskIdSet[$right])) {
+                continue;
+            }
+
+            // Map only true dependencies (Finish-to-Start)
+            if ($label === 'blocks') {
+                $source = $left;   // A blocks B → A → B
+                $target = $right;
+            } elseif ($label === 'is blocked by') {
+                $source = $right;  // invert
+                $target = $left;
+            } else {
+                continue; // ignore non-dependency relations
+            }
+
+            $links[] = array(
+                'id'     => $rowId,
+                'source' => $source,
+                'target' => $target,
+                'type'   => '0', // DHTMLX Finish-to-Start
+            );
+        }
+
         return $links;
     }
+
 }

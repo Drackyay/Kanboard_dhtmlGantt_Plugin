@@ -12,26 +12,58 @@ class Plugin extends Base
 {
     public function initialize()
     {
-        $this->route->addRoute('dhtmlgantt/:project_id', 'TaskGanttController', 'show', 'plugin');
-        $this->route->addRoute('dhtmlgantt/:project_id/sort/:sorting', 'TaskGanttController', 'show', 'plugin');
+        //
+        // Routes
+        //
+        // Existing routes (keep if you still use TaskGanttController screens)
+        $this->route->addRoute('dhtmlgantt/:project_id', 'TaskGanttController', 'show', 'DhtmlGantt');
+        $this->route->addRoute('dhtmlgantt/:project_id/sort/:sorting', 'TaskGanttController', 'show', 'DhtmlGantt');
 
+        // New routes for the dedicated Project Gantt page + data endpoint
+        $this->route->addRoute('project/:project_id/gantt', 'ProjectGanttController', 'show', 'DhtmlGantt');
+        $this->route->addRoute('project/:project_id/gantt/data', 'ProjectGanttController', 'tasks', 'DhtmlGantt');
+
+        //
+        // Access map
+        //
+        // View permissions
+        $this->projectAccessMap->add('ProjectGanttController', 'show',  Role::PROJECT_VIEWER);
+        $this->projectAccessMap->add('ProjectGanttController', 'tasks', Role::PROJECT_VIEWER);
+
+        // Edit permissions (only needed if you enable drag/edit/create/delete from the Gantt)
+        $this->projectAccessMap->add('ProjectGanttController', 'update', Role::PROJECT_MEMBER);
+        $this->projectAccessMap->add('ProjectGanttController', 'create', Role::PROJECT_MEMBER);
+        $this->projectAccessMap->add('ProjectGanttController', 'remove', Role::PROJECT_MEMBER);
+
+        // (Keep existing mappings if you still use TaskGanttController)
         $this->projectAccessMap->add('ProjectGanttController', 'save', Role::PROJECT_MANAGER);
         $this->projectAccessMap->add('TaskGanttController', 'save', Role::PROJECT_MEMBER);
 
+        //
+        // Template hooks (menus, sidebar, etc.)
+        //
         $this->template->hook->attach('template:project-header:view-switcher', 'DhtmlGantt:project_header/views');
         $this->template->hook->attach('template:project:dropdown', 'DhtmlGantt:project/dropdown');
         $this->template->hook->attach('template:project-list:menu:after', 'DhtmlGantt:project_list/menu');
         $this->template->hook->attach('template:config:sidebar', 'DhtmlGantt:config/sidebar');
 
-        // Load DHtmlX Gantt library first
-        $this->hook->on('template:layout:js', array('template' => 'plugins/DhtmlGantt/Assets/dhtmlxgantt.js'));
+        //
+        // Assets (ensure correct load order)
+        //
+        // 1) DHTMLX library first
+        $this->hook->on('template:layout:js',  array('template' => 'plugins/DhtmlGantt/Assets/dhtmlxgantt.js'));
         $this->hook->on('template:layout:css', array('template' => 'plugins/DhtmlGantt/Assets/dhtmlxgantt.css'));
 
-        // Load our custom Gantt implementation after the library
-        $this->hook->on('template:layout:js', array('template' => 'plugins/DhtmlGantt/Assets/gantt.js'));
-        $this->hook->on('template:layout:js', array('template' => 'plugins/DhtmlGantt/Assets/dhtmlx-init.js'));
+        // 2) Our config (sets gantt.config.links, scales, etc.)
+        $this->hook->on('template:layout:js',  array('template' => 'plugins/DhtmlGantt/Assets/dhtmlx-init.js'));
+
+        // 3) Our logic (init, fetch, parse)
+        $this->hook->on('template:layout:js',  array('template' => 'plugins/DhtmlGantt/Assets/gantt.js'));
         $this->hook->on('template:layout:css', array('template' => 'plugins/DhtmlGantt/Assets/gantt.css'));
 
+        //
+        // Services
+        //
         $this->container['projectGanttFormatter'] = $this->container->factory(function ($c) {
             return new ProjectGanttFormatter($c);
         });

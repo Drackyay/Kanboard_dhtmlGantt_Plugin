@@ -273,8 +273,9 @@ class TaskGanttFormatter extends BaseFormatter implements FormatterInterface
         return $subtask['status'] == 2; // Done
     }
 
+ 
     /**
-     * Format task links for DHtmlX Gantt
+     * Build DHTMLX links from Kanboard internal links (alias-free for PicoDb/SQLite)
      *
      * @access private
      * @return array
@@ -282,32 +283,63 @@ class TaskGanttFormatter extends BaseFormatter implements FormatterInterface
     private function formatLinks()
     {
         $links = array();
-        $processedLinks = array();
 
-        foreach ($this->query->findAll() as $task) {
-            $taskLinks = $this->taskLinkModel->getAll($task['id']);
-            
-            foreach ($taskLinks as $link) {
-                $linkId = $link['id'];
-                $sourceId = $link['opposite_task_id'];
-                $targetId = $link['task_id'];
-                
-                // Avoid duplicate links
-                $linkKey = min($sourceId, $targetId) . '-' . max($sourceId, $targetId);
-                
-                if (!isset($processedLinks[$linkKey])) {
-                    $links[] = array(
-                        'id' => $linkId,
-                        'source' => $sourceId,
-                        'target' => $targetId,
-                        'type' => '0' // finish-to-start
-                    );
-                    
-                    $processedLinks[$linkKey] = true;
-                }
+        // Collect task ids from current dataset
+        $taskIds = array();
+        foreach ($this->query->findAll() as $t) {
+            $taskIds[] = (int) $t['id'];
+        }
+        if (empty($taskIds)) {
+            return $links;
+        }
+        $taskIdSet = array_flip($taskIds);
+
+        // Query internal links (no aliases in table/join)
+        $rows = $this->db->table('task_has_links')
+            ->join('links', 'id', 'link_id') // links.id = task_has_links.link_id
+            ->columns(
+                'task_has_links.id',
+                'links.label',
+                'task_has_links.task_id',
+                'task_has_links.opposite_task_id'
+            )
+            ->in('task_has_links.task_id', $taskIds)
+            ->findAll();
+
+        foreach ($rows as $r) {
+            // PicoDb often returns unqualified keys: id, label, task_id, opposite_task_id
+            $left  = (int) ( $r['task_id']           ?? ($r['task_has_links.task_id'] ?? 0) );
+            $right = (int) ( $r['opposite_task_id']  ?? ($r['task_has_links.opposite_task_id'] ?? 0) );
+            $label =        ( $r['label']            ?? ($r['links.label'] ?? '') );
+            $rowId = (int) ( $r['id']                ?? ($r['task_has_links.id'] ?? 0) );
+
+            if ($left === 0 || $right === 0) {
+                continue;
             }
+            if (!isset($taskIdSet[$right])) {
+                continue;
+            }
+
+            // Map only true dependencies (Finish-to-Start)
+            if ($label === 'blocks') {
+                $source = $left;   // A blocks B → A → B
+                $target = $right;
+            } elseif ($label === 'is blocked by') {
+                $source = $right;  // invert
+                $target = $left;
+            } else {
+                continue; // ignore non-dependency relations
+            }
+
+            $links[] = array(
+                'id'     => $rowId,
+                'source' => $source,
+                'target' => $target,
+                'type'   => '0', // DHTMLX FS
+            );
         }
 
         return $links;
     }
+
 }
