@@ -19,10 +19,10 @@
                 <button type="button" class="btn btn-dhtmlx-view" data-view="Half Day">Half Day</button>
             </li>
             <li>
-                <button type="button" class="btn btn-dhtmlx-view active" data-view="Day">Day</button>
+                <button type="button" class="btn btn-dhtmlx-view" data-view="Day">Day</button>
             </li>
             <li>
-                <button type="button" class="btn btn-dhtmlx-view" data-view="Week">Week</button>
+                <button type="button" class="btn btn-dhtmlx-view active" data-view="Week">Week</button>
             </li>
             <li>
                 <button type="button" class="btn btn-dhtmlx-view" data-view="Month">Month</button>

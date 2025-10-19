@@ -58,27 +58,41 @@ class TaskGanttController extends BaseController
         $this->getProject();
         $changes = $this->request->getJson();
         $values = [];
+        
+        // Debug logging
+        error_log('DHtmlX Gantt Save - Received data: ' . json_encode($changes));
 
         if (! empty($changes['start_date'])) {
-            $values['date_started'] = strtotime($changes['start_date']);
+            $startTime = strtotime($changes['start_date']);
+            if ($startTime !== false) {
+                $values['date_started'] = $startTime;
+            }
         }
 
         if (! empty($changes['end_date'])) {
-            $values['date_due'] = strtotime($changes['end_date']);
+            $endTime = strtotime($changes['end_date']);
+            if ($endTime !== false) {
+                $values['date_due'] = $endTime;
+            }
         }
 
         if (! empty($values)) {
             $task_id = (int) $changes['id'];
             $values['id'] = $task_id;
             
+            error_log('DHtmlX Gantt Save - Updating task ' . $task_id . ' with values: ' . json_encode($values));
+            
             $result = $this->taskModificationModel->update($values);
 
             if (! $result) {
+                error_log('DHtmlX Gantt Save - Failed to update task ' . $task_id);
                 $this->response->json(array('result' => 'error', 'message' => 'Unable to save task'), 400);
             } else {
+                error_log('DHtmlX Gantt Save - Successfully updated task ' . $task_id);
                 $this->response->json(array('result' => 'ok', 'message' => 'Task updated successfully'), 200);
             }
         } else {
+            error_log('DHtmlX Gantt Save - No changes to save');
             $this->response->json(array('result' => 'ignored', 'message' => 'No changes'), 200);
         }
     }

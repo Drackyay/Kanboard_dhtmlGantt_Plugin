@@ -352,10 +352,10 @@ function initDhtmlxGantt() {
     gantt.config.date_format = "%Y-%m-%d %H:%i";
     gantt.config.xml_date = "%Y-%m-%d %H:%i";
     
-    // NEW scale configuration format (fixes deprecation warnings)
+    // NEW scale configuration format (fixes deprecation warnings) - Default to Week view
     gantt.config.scales = [
-        {unit: "day", step: 1, format: "%d %M"},
-        {unit: "hour", step: 1, format: "%H"}
+        {unit: "week", step: 1, format: "Week #%W"},
+        {unit: "day", step: 1, format: "%d %M"}
     ];
     
     // Ensure grid is visible
@@ -435,20 +435,43 @@ function loadGanttData(data) {
 
 function setupGanttEventHandlers() {
     // Data processor for CRUD operations - URLs will be set by template
-    // if (typeof window.ganttUrls !== 'undefined' && window.ganttUrls.update) {
-    //     var dp = new gantt.dataProcessor({
-    //         task: {
-    //             update: window.ganttUrls.update,
-    //             create: window.ganttUrls.create,
-    //             delete: window.ganttUrls.remove
-    //         },
-    //         link: {
-    //             create: window.ganttUrls.createLink,
-    //             delete: window.ganttUrls.removeLink
-    //         }
-    //     });
-    //     dp.init(gantt);
-    // }
+    if (typeof window.ganttUrls !== 'undefined' && window.ganttUrls.update) {
+        console.log('Setting up data processor with URLs:', window.ganttUrls);
+        
+        // Use simplified event-based approach instead of data processor
+        gantt.attachEvent("onAfterTaskUpdate", function(id, task) {
+            console.log('Task updated, sending to server:', id, task);
+            
+            // Send update to server
+            fetch(window.ganttUrls.update, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    id: id,
+                    start_date: task.start_date,
+                    end_date: task.end_date,
+                    text: task.text
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                console.log('Server response:', data);
+                if (data.result !== 'ok') {
+                    console.error('Failed to save task:', data.message);
+                }
+            })
+            .catch(error => {
+                console.error('Error saving task:', error);
+            });
+        });
+        
+        console.log('Event-based data handling initialized successfully');
+        
+    } else {
+        console.warn('No ganttUrls found, data processor not initialized');
+    }
     
     // Toolbar event handlers
     var addTaskBtn = document.getElementById('dhtmlx-add-task');
@@ -485,29 +508,41 @@ function setupGanttEventHandlers() {
         });
     }
     
-    // View mode buttons
-    document.querySelectorAll('.btn-dhtmlx-view').forEach(function(btn) {
-        btn.addEventListener('click', function() {
-            // Remove active class from all buttons
-            document.querySelectorAll('.btn-dhtmlx-view').forEach(function(b) {
-                b.classList.remove('active');
+    // View mode buttons - add delay to ensure DOM is ready
+    setTimeout(function() {
+        const viewButtons = document.querySelectorAll('.btn-dhtmlx-view');
+        console.log('Found view buttons:', viewButtons.length);
+        
+        viewButtons.forEach(function(btn) {
+            btn.addEventListener('click', function(e) {
+                e.preventDefault();
+                const view = this.getAttribute('data-view');
+                console.log('View mode button clicked:', view);
+                
+                // Remove active class from all buttons
+                document.querySelectorAll('.btn-dhtmlx-view').forEach(function(b) {
+                    b.classList.remove('active');
+                });
+                // Add active class to clicked button
+                this.classList.add('active');
+                
+                // Change view mode
+                changeViewMode(view);
             });
-            // Add active class to clicked button
-            this.classList.add('active');
-            
-            // Change view mode
-            const view = this.getAttribute('data-view');
-            changeViewMode(view);
         });
-    });
+    }, 100);
     
     // Update statistics when tasks change
-    gantt.attachEvent("onAfterTaskUpdate", updateStatistics);
+    gantt.attachEvent("onAfterTaskUpdate", function(id, task) {
+        console.log('Task statistics update for:', id, task);
+        updateStatistics();
+    });
     gantt.attachEvent("onAfterTaskAdd", updateStatistics);
     gantt.attachEvent("onAfterTaskDelete", updateStatistics);
 }
 
 function changeViewMode(mode) {
+    console.log('Changing view mode to:', mode);
     // Use NEW scale configuration format
     switch(mode) {
         case 'Quarter Day':
@@ -542,6 +577,7 @@ function changeViewMode(mode) {
             break;
     }
     gantt.render();
+    console.log('View mode changed to:', mode, 'Gantt re-rendered');
 }
 
 function updateStatistics() {

@@ -113,8 +113,10 @@ class TaskGanttFormatter extends BaseFormatter implements FormatterInterface
         $formattedSubTasks = array();
 
         foreach ($subTasks as $subTask) {
-            $start = $subTask['due_date'] ? $subTask['due_date'] - (3 * 24 * 60 * 60) : time();
-            $end = $subTask['due_date'] ?: time();
+            // Kanboard subtasks don't have due_date, use current time as fallback
+            $due_date = isset($subTask['due_date']) ? $subTask['due_date'] : null;
+            $start = $due_date ? $due_date - (3 * 24 * 60 * 60) : time();
+            $end = $due_date ?: (time() + 24 * 60 * 60); // Default to 1 day duration
 
             $progress = $this->getSubtaskProgress($subTask);
 
