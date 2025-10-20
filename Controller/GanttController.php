@@ -64,6 +64,11 @@ class GanttController extends BaseController
     
     /**
      * Apply column and swimlane filters to tasks
+     * 
+     * Note: swimlane_id has been repurposed for assignment filtering:
+     * - swimlane_id=0: Returns unassigned tasks (owner_id = 0 or null)
+     * - swimlane_id=1: Returns tasks assigned to admin (owner_id = 1)
+     * - swimlane_id=other: Returns tasks assigned to that user ID
      *
      * @param array $tasks
      * @param int|null $column_id
@@ -73,7 +78,7 @@ class GanttController extends BaseController
     private function applyFilters($tasks, $column_id = null, $swimlane_id = null)
     {
         // Return all tasks if no filters provided
-        if (!$column_id && !$swimlane_id) {
+        if (!$column_id && $swimlane_id === null) {
             return $tasks;
         }
         
@@ -87,9 +92,19 @@ class GanttController extends BaseController
                 $include_task = false;
             }
             
-            // Apply swimlane filter
-            if ($swimlane_id && $task['swimlane_id'] != $swimlane_id) {
-                $include_task = false;
+            // Apply assignment filter (using swimlane_id parameter)
+            if ($swimlane_id !== null) {
+                if ($swimlane_id == 0) {
+                    // swimlane_id=0: Show only unassigned tasks
+                    if (!empty($task['owner_id'])) {
+                        $include_task = false;
+                    }
+                } else {
+                    // swimlane_id=1 (admin) or other user IDs: Show tasks assigned to that user
+                    if (empty($task['owner_id']) || $task['owner_id'] != $swimlane_id) {
+                        $include_task = false;
+                    }
+                }
             }
             
             if ($include_task) {

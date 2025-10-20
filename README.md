@@ -96,13 +96,18 @@ This plugin integrates DHTMLX Gantt charts into Kanboard, providing USC student 
 
 **Optional Filters:**
 - `column_id` - Filter tasks by Kanboard column (workflow stage)
-- `swimlane_id` - Filter tasks by Kanboard swimlane (team/category)
+- `swimlane_id` - Filter tasks by assignment status:
+  - `swimlane_id=0` - Show only **unassigned tasks** (no owner)
+  - `swimlane_id=1` - Show only tasks assigned to **admin** (user ID 1)
+  - `swimlane_id=N` - Show only tasks assigned to **user ID N**
 
 **Example URLs:**
 - All tasks: `/gantt/json/1`
 - By column: `/gantt/json/1?column_id=3`
-- By swimlane: `/gantt/json/1?swimlane_id=2`
-- Both filters: `/gantt/json/1?column_id=3&swimlane_id=2`
+- Unassigned tasks: `/gantt/json/1?swimlane_id=0`
+- Admin's tasks: `/gantt/json/1?swimlane_id=1`
+- Specific user's tasks: `/gantt/json/1?swimlane_id=5`
+- Both filters: `/gantt/json/1?column_id=3&swimlane_id=1`
 
 ### Response Format
 
@@ -186,27 +191,43 @@ http://localhost:8080/gantt/json/1?column_id=3
 - Focus on backlog items
 - Show completed tasks only
 
-### Swimlane Filtering
+### Assignment Filtering
 
-Filter tasks by their Kanboard swimlane (team/category):
+Filter tasks by their assignment status using the `swimlane_id` parameter:
 
-**Example:** Show only tasks in "Team Alpha" swimlane (swimlane_id=2)
+**Example 1:** Show only unassigned tasks (swimlane_id=0)
 ```
-http://localhost:8080/gantt/json/1?swimlane_id=2
+http://localhost:8080/gantt/json/1?swimlane_id=0
+```
+
+**Example 2:** Show only admin's tasks (swimlane_id=1)
+```
+http://localhost:8080/gantt/json/1?swimlane_id=1
+```
+
+**Example 3:** Show tasks assigned to specific user (swimlane_id=5)
+```
+http://localhost:8080/gantt/json/1?swimlane_id=5
 ```
 
 **Use Cases:**
-- View tasks for specific team
-- Show tasks by feature category
-- Filter by priority swimlanes
+- View unassigned tasks that need owners
+- See admin's workload
+- Filter by specific team member
+- Track individual progress
 
 ### Combined Filtering
 
 Apply both filters together for precise task views:
 
-**Example:** Tasks in "In Progress" column AND "Team Alpha" swimlane
+**Example:** Tasks in "In Progress" column AND assigned to admin
 ```
-http://localhost:8080/gantt/json/1?column_id=3&swimlane_id=2
+http://localhost:8080/gantt/json/1?column_id=3&swimlane_id=1
+```
+
+**Example:** Unassigned tasks in "Backlog" column
+```
+http://localhost:8080/gantt/json/1?column_id=1&swimlane_id=0
 ```
 
 ### How to Find IDs
@@ -216,9 +237,12 @@ http://localhost:8080/gantt/json/1?column_id=3&swimlane_id=2
 2. Hover over a column header
 3. Column ID is in the URL or visible in admin settings
 
-**Swimlane IDs:**
-1. Go to Project Settings → Swimlanes
-2. Swimlane IDs are shown in the list
+**User IDs (for swimlane_id parameter):**
+1. Go to Settings → Users in Kanboard
+2. Click on a user to see their profile URL
+3. The user ID is in the URL: `/user/show/5` → User ID is 5
+4. Admin is typically User ID 1
+5. Use swimlane_id=0 for unassigned tasks (no user ID needed)
 
 **Note:** Dependencies (links) are automatically filtered - only arrows between visible tasks will appear.
 
