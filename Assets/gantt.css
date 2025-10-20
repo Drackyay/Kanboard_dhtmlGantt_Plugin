@@ -148,6 +148,95 @@
     margin-bottom: 20px;
 }
 
+/* Task bar assignee styling */
+.gantt_task_content {
+    font-size: 12px;
+    font-weight: 600;
+    color: #2c3e50 !important; /* Dark blue-gray for good readability */
+    text-shadow: 0 1px 2px rgba(255,255,255,0.8) !important; /* Light shadow for contrast */
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* Right side text (assignee) styling */
+.gantt_task_line .gantt_task_rightside_text {
+    font-size: 11px;
+    color: #34495e !important; /* Darker color for better visibility */
+    font-weight: 600;
+    padding: 2px 8px;
+    background: rgba(255,255,255,0.9) !important; /* Semi-transparent white background */
+    border-radius: 12px;
+    border: 1px solid rgba(52,73,94,0.2);
+    text-shadow: none;
+}
+
+/* Progress text styling */
+.gantt_task_progress_text {
+    color: #2c3e50 !important;
+    font-weight: 600;
+    text-shadow: 0 1px 2px rgba(255,255,255,0.8) !important;
+}
+
+/* Hover effects for better interaction */
+.gantt_task_line:hover .gantt_task_content {
+    color: #1a252f !important;
+    transform: scale(1.02);
+    transition: all 0.2s ease;
+}
+
+.gantt_task_line:hover .gantt_task_rightside_text {
+    background: rgba(255,255,255,1) !important;
+    color: #2c3e50 !important;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.15);
+    transform: scale(1.05);
+    transition: all 0.2s ease;
+}
+
+/* Ensure text rendering quality */
+.gantt_task_content {
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+}
+
+/* Task selection highlighting */
+.gantt_selected .gantt_task_line .gantt_task_content {
+    color: #1a252f !important;
+    font-weight: 700 !important;
+}
+
+.gantt_selected .gantt_task_line .gantt_task_rightside_text {
+    background: rgba(52,152,219,0.2) !important;
+    color: #2c3e50 !important;
+    border-color: #3498db !important;
+}
+
+/* Force dark text on all priority levels */
+.dhtmlx-priority-high .gantt_task_content,
+.dhtmlx-priority-medium .gantt_task_content,
+.dhtmlx-priority-low .gantt_task_content,
+.gantt_task_line .gantt_task_content {
+    color: #2c3e50 !important;
+    text-shadow: 0 1px 2px rgba(255,255,255,0.8) !important;
+}
+
+.dhtmlx-priority-high .gantt_task_rightside_text,
+.dhtmlx-priority-medium .gantt_task_rightside_text,
+.dhtmlx-priority-low .gantt_task_rightside_text,
+.gantt_task_line .gantt_task_rightside_text {
+    color: #34495e !important;
+    background: rgba(255,255,255,0.9) !important;
+}
+
+.dhtmlx-priority-high .gantt_task_progress_text,
+.dhtmlx-priority-medium .gantt_task_progress_text,
+.dhtmlx-priority-low .gantt_task_progress_text,
+.gantt_task_progress_text {
+    color: #2c3e50 !important;
+    text-shadow: 0 1px 2px rgba(255,255,255,0.8) !important;
+}
+
 /* Responsive Design */
 @media (max-width: 768px) {
     .dhtmlx-gantt-toolbar {
@@ -162,5 +251,14 @@
     
     .dhtmlx-stats {
         justify-content: space-around;
+    }
+    
+    /* Hide assignee background on small screens to save space */
+    .gantt_task_line .gantt_task_rightside_text {
+        background: none !important;
+        border: none !important;
+        padding: 0 !important;
+        color: #34495e !important;
+        font-weight: 700;
     }
 }

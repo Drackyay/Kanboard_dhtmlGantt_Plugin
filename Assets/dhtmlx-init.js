@@ -396,13 +396,36 @@ function initDhtmlxGantt() {
         return "<span>" + Math.round(task.progress * 100) + "% </span>";
     };
     
+    // Task bar text template - show task name and assignee
+    gantt.templates.task_text = function(start, end, task) {
+        var text = task.text;
+        if (task.assignee && task.assignee.trim() !== '') {
+            text += " [" + task.assignee + "]";
+        }
+        return text;
+    };
+    
+    // Right side text template - show assignee on right side of task bar
+    gantt.templates.rightside_text = function(start, end, task) {
+        if (task.assignee && task.assignee.trim() !== '') {
+            return "👤 " + task.assignee;
+        }
+        return "";
+    };
+    
     // Tooltip template
     gantt.templates.tooltip_text = function(start, end, task) {
-        return "<b>Task:</b> " + task.text + "<br/>" +
+        var tooltip = "<b>Task:</b> " + task.text + "<br/>" +
                "<b>Start:</b> " + gantt.templates.tooltip_date_format(start) + "<br/>" +
                "<b>End:</b> " + gantt.templates.tooltip_date_format(end) + "<br/>" +
                "<b>Progress:</b> " + Math.round(task.progress * 100) + "%<br/>" +
                "<b>Priority:</b> " + (task.priority || 'normal');
+        
+        if (task.assignee && task.assignee.trim() !== '') {
+            tooltip += "<br/><b>Assignee:</b> " + task.assignee;
+        }
+        
+        return tooltip;
     };
     
     // Initialize Gantt
