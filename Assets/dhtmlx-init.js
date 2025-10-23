@@ -366,8 +366,16 @@ function initDhtmlxGantt() {
     gantt.plugins({
         tooltip: true,
         keyboard_navigation: true,
-        undo: true
+        undo: true,
+        grouping: true  // Add this line
     });
+
+
+
+
+
+
+    
     
     // Configure columns
     gantt.config.columns = [
@@ -379,7 +387,7 @@ function initDhtmlxGantt() {
         {name: "add", label: "", width: 44}
     ];
     
-    // Custom task styling
+    //new
     gantt.templates.task_class = function(start, end, task) {
         var className = "";
         if (task.priority) {
@@ -396,37 +404,17 @@ function initDhtmlxGantt() {
         return "<span>" + Math.round(task.progress * 100) + "% </span>";
     };
     
-    // Task bar text template - show task name and assignee
-    gantt.templates.task_text = function(start, end, task) {
-        var text = task.text;
-        if (task.assignee && task.assignee.trim() !== '') {
-            text += " [" + task.assignee + "]";
-        }
-        return text;
-    };
-    
-    // Right side text template - show assignee on right side of task bar
-    gantt.templates.rightside_text = function(start, end, task) {
-        if (task.assignee && task.assignee.trim() !== '') {
-            return "👤 " + task.assignee;
-        }
-        return "";
-    };
-    
     // Tooltip template
     gantt.templates.tooltip_text = function(start, end, task) {
-        var tooltip = "<b>Task:</b> " + task.text + "<br/>" +
+        return "<b>Task:</b> " + task.text + "<br/>" +
                "<b>Start:</b> " + gantt.templates.tooltip_date_format(start) + "<br/>" +
                "<b>End:</b> " + gantt.templates.tooltip_date_format(end) + "<br/>" +
                "<b>Progress:</b> " + Math.round(task.progress * 100) + "%<br/>" +
                "<b>Priority:</b> " + (task.priority || 'normal');
-        
-        if (task.assignee && task.assignee.trim() !== '') {
-            tooltip += "<br/><b>Assignee:</b> " + task.assignee;
-        }
-        
-        return tooltip;
     };
+    //new
+
+
     
     // Initialize Gantt
     try {
@@ -455,6 +443,81 @@ function loadGanttData(data) {
     
     updateStatistics();
 }
+
+
+//new
+// Simple zoom configuration
+var currentZoomLevel = 1; // Start at day view
+var zoomLevels = [
+    { name: "hour", scales: [{unit: "day", format: "%d %M"}, {unit: "hour", format: "%H"}] },
+    { name: "day", scales: [{unit: "week", format: "Week #%W"}, {unit: "day", format: "%d %M"}] },
+    { name: "week", scales: [{unit: "month", format: "%F"}, {unit: "week", format: "W%W"}] },
+    { name: "month", scales: [{unit: "year", format: "%Y"}, {unit: "month", format: "%M"}] }
+];
+
+function smartZoom(direction) {
+    var newLevel = direction === 'in' ? 
+        Math.max(0, currentZoomLevel - 1) : 
+        Math.min(zoomLevels.length - 1, currentZoomLevel + 1);
+    
+    if (newLevel === currentZoomLevel) return;
+    
+    // Save center date to maintain position
+    var scrollState = gantt.getScrollState();
+    var centerDate = gantt.dateFromPos(scrollState.x + scrollState.width / 2);
+    
+    // Apply zoom
+    gantt.config.scales = zoomLevels[newLevel].scales;
+    gantt.render();
+    currentZoomLevel = newLevel;
+    
+    // Restore center position
+    if (centerDate) {
+        var newPos = gantt.posFromDate(centerDate);
+        gantt.scrollTo(newPos - scrollState.width / 2, scrollState.y);
+    }
+}
+
+function smartFitToScreen() {
+    var tasks = gantt.getTaskByTime();
+    if (tasks.length === 0) return;
+    
+    // Find actual date range
+    var minDate = null, maxDate = null;
+    tasks.forEach(function(task) {
+        var start = task.start_date;
+        var end = task.end_date || gantt.calculateEndDate(start, task.duration);
+        if (!minDate || start < minDate) minDate = start;
+        if (!maxDate || end > maxDate) maxDate = end;
+    });
+    
+    // Add 10% padding
+    var diff = (maxDate - minDate) / 10;
+    minDate = new Date(minDate.getTime() - diff);
+    maxDate = new Date(maxDate.getTime() + diff);
+    
+    // Calculate best zoom level
+    var container = document.getElementById('dhtmlx-gantt-chart');
+    var availableWidth = container.offsetWidth - gantt.config.grid_width;
+    var totalDays = (maxDate - minDate) / (1000 * 60 * 60 * 24);
+    var pixelsPerDay = availableWidth / totalDays;
+    
+    // Pick level: >80px/day=hour, >40=day, >15=week, else month
+    var level = pixelsPerDay > 80 ? 0 : pixelsPerDay > 40 ? 1 : pixelsPerDay > 15 ? 2 : 3;
+    
+    // Apply
+    gantt.config.scales = zoomLevels[level].scales;
+    gantt.config.start_date = minDate;
+    gantt.config.end_date = maxDate;
+    gantt.render();
+    currentZoomLevel = level;
+    
+    // Scroll to start
+    gantt.showDate(minDate);
+}
+//new
+
+
 
 function setupGanttEventHandlers() {
     // Data processor for CRUD operations - URLs will be set by template
@@ -504,32 +567,72 @@ function setupGanttEventHandlers() {
         });
     }
     
-    var zoomInBtn = document.getElementById('dhtmlx-zoom-in');
-    if (zoomInBtn) {
-        zoomInBtn.addEventListener('click', function() {
-            if (gantt.ext && gantt.ext.zoom) {
-                gantt.ext.zoom.zoomIn();
-            }
-        });
-    }
+    // var zoomInBtn = document.getElementById('dhtmlx-zoom-in');
+    // if (zoomInBtn) {
+    //     zoomInBtn.addEventListener('click', function() {
+    //         if (gantt.ext && gantt.ext.zoom) {
+    //             gantt.ext.zoom.zoomIn();
+    //         }
+    //     });
+    // }
     
-    var zoomOutBtn = document.getElementById('dhtmlx-zoom-out');
-    if (zoomOutBtn) {
-        zoomOutBtn.addEventListener('click', function() {
-            if (gantt.ext && gantt.ext.zoom) {
-                gantt.ext.zoom.zoomOut();
-            }
-        });
-    }
+    // var zoomOutBtn = document.getElementById('dhtmlx-zoom-out');
+    // if (zoomOutBtn) {
+    //     zoomOutBtn.addEventListener('click', function() {
+    //         if (gantt.ext && gantt.ext.zoom) {
+    //             gantt.ext.zoom.zoomOut();
+    //         }
+    //     });
+    // }
     
-    var fitBtn = document.getElementById('dhtmlx-fit');
-    if (fitBtn) {
-        fitBtn.addEventListener('click', function() {
-            if (gantt.ext && gantt.ext.zoom) {
-                gantt.ext.zoom.setLevel("month");
-            }
-        });
-    }
+    // var fitBtn = document.getElementById('dhtmlx-fit');
+    // if (fitBtn) {
+    //     fitBtn.addEventListener('click', function() {
+    //         if (gantt.ext && gantt.ext.zoom) {
+    //             gantt.ext.zoom.setLevel("month");
+    //         }
+    //     });
+    // }
+
+
+    // Enhanced zoom handlers
+var zoomInBtn = document.getElementById('dhtmlx-zoom-in');
+if (zoomInBtn) {
+    zoomInBtn.addEventListener('click', function() {
+        smartZoom('in');
+    });
+}
+
+var zoomOutBtn = document.getElementById('dhtmlx-zoom-out');
+if (zoomOutBtn) {
+    zoomOutBtn.addEventListener('click', function() {
+        smartZoom('out');
+    });
+}
+
+var fitBtn = document.getElementById('dhtmlx-fit');
+if (fitBtn) {
+    fitBtn.addEventListener('click', function() {
+        smartFitToScreen();
+    });
+}
+
+var groupByAssigneeBtn = document.getElementById('dhtmlx-group-assignee');
+if (groupByAssigneeBtn) {
+    var isGrouped = false;
+    groupByAssigneeBtn.addEventListener('click', function() {
+        if (!isGrouped) {
+            groupByAssignee();
+            this.classList.add('active');
+            isGrouped = true;
+        } else {
+            clearGrouping();
+            this.classList.remove('active');
+            isGrouped = false;
+        }
+    });
+}//NEWNEW
+
     
     // View mode buttons - add delay to ensure DOM is ready
     setTimeout(function() {
@@ -562,6 +665,8 @@ function setupGanttEventHandlers() {
     });
     gantt.attachEvent("onAfterTaskAdd", updateStatistics);
     gantt.attachEvent("onAfterTaskDelete", updateStatistics);
+
+
 }
 
 function changeViewMode(mode) {
@@ -602,6 +707,116 @@ function changeViewMode(mode) {
     gantt.render();
     console.log('View mode changed to:', mode, 'Gantt re-rendered');
 }
+
+
+
+//new
+var originalTasks = null; // Store original task data
+
+function groupByAssignee() {
+    console.log('Grouping by assignee...');
+    
+    // Store original tasks if not already stored
+    if (!originalTasks) {
+        originalTasks = gantt.serialize();
+    }
+    
+    // Get all tasks
+    var tasks = gantt.getTaskByTime();
+    var groups = {};
+    var groupedData = [];
+    var groupIdCounter = 10000; // Start group IDs at a high number to avoid conflicts
+    
+    // Group tasks by assignee
+    tasks.forEach(function(task) {
+        var assignee = task.assignee || 'Unassigned';
+        if (!groups[assignee]) {
+            groups[assignee] = {
+                id: groupIdCounter++,
+                text: assignee,
+                start_date: task.start_date,
+                duration: 0,
+                progress: 0,
+                type: 'project', // Make it a project/group
+                open: true,
+                assignee: assignee,
+                tasks: []
+            };
+        }
+        groups[assignee].tasks.push(task);
+    });
+    
+    // Build grouped structure
+    for (var assignee in groups) {
+        var group = groups[assignee];
+        var minDate = null;
+        var maxDate = null;
+        var totalProgress = 0;
+        
+        // Calculate group properties
+        group.tasks.forEach(function(task) {
+            if (!minDate || task.start_date < minDate) {
+                minDate = task.start_date;
+            }
+            var taskEnd = task.end_date || gantt.calculateEndDate(task.start_date, task.duration);
+            if (!maxDate || taskEnd > maxDate) {
+                maxDate = taskEnd;
+            }
+            totalProgress += task.progress;
+        });
+        
+        group.start_date = minDate;
+        group.end_date = maxDate;
+        group.duration = gantt.calculateDuration(minDate, maxDate);
+        group.progress = totalProgress / group.tasks.length;
+        
+        // Add group
+        groupedData.push({
+            id: group.id,
+            text: group.text + ' (' + group.tasks.length + ' tasks)',
+            start_date: gantt.date.date_to_str(gantt.config.date_format)(group.start_date),
+            duration: group.duration,
+            progress: group.progress,
+            type: 'project',
+            open: true
+        });
+        
+        // Add tasks under group
+        group.tasks.forEach(function(task) {
+            groupedData.push({
+                id: task.id,
+                text: task.text,
+                start_date: gantt.date.date_to_str(gantt.config.date_format)(task.start_date),
+                end_date: gantt.date.date_to_str(gantt.config.date_format)(task.end_date || gantt.calculateEndDate(task.start_date, task.duration)),
+                duration: task.duration,
+                progress: task.progress,
+                priority: task.priority,
+                color: task.color,
+                parent: group.id, // Set parent to group
+                assignee: task.assignee
+            });
+        });
+    }
+    
+    // Clear and reload with grouped data
+    gantt.clearAll();
+    gantt.parse({data: groupedData, links: []});
+    
+    console.log('Grouped by assignee successfully');
+}
+
+function clearGrouping() {
+    console.log('Clearing grouping...');
+    
+    if (originalTasks) {
+        gantt.clearAll();
+        gantt.parse(originalTasks);
+        originalTasks = null;
+    }
+    
+    console.log('Grouping cleared');
+}
+//new
 
 function updateStatistics() {
     var tasks = gantt.getTaskByTime();

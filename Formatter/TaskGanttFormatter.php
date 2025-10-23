@@ -37,6 +37,12 @@ class TaskGanttFormatter extends BaseFormatter implements FormatterInterface
         $links = array();
 
         foreach ($this->query->findAll() as $task) {
+
+            // Skip tasks in Done column (filter by column name, not task status)
+            if (isset($task['column_name']) && strcasecmp($task['column_name'], 'Done') === 0) {
+                continue;
+            }
+
             $formattedTask = $this->formatTask($task);
             
             if (!in_array($formattedTask['id'], self::$ids)) {
