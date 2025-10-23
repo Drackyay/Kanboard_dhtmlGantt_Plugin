@@ -415,6 +415,64 @@ function initDhtmlxGantt() {
     //new
 
 
+
+    // new code for lightbox + link to kb
+    // Configure lightbox sections to add "View in Kanboard" button
+gantt.config.lightbox.sections = [
+    {name: "description", height: 38, map_to: "text", type: "textarea", focus: true},
+    {name: "priority", height: 22, map_to: "priority", type: "select", options: [
+        {key: "low", label: "Low"},
+        {key: "normal", label: "Normal"},
+        {key: "medium", label: "Medium"},
+        {key: "high", label: "High"}
+    ]},
+    {name: "time", type: "duration", map_to: "auto"},
+    {name: "kanboard_link", height: 40, type: "template", map_to: "my_template"}
+];
+
+// Custom template for the "View in Kanboard" button
+gantt.locale.labels.section_kanboard_link = "Quick Actions";
+gantt.form_blocks["template"] = {
+    render: function(sns) {
+        return "<div class='dhtmlx_cal_ltext' style='height:" + sns.height + "px;'></div>";
+    },
+    set_value: function(node, value, task, section) {
+        var projectId = document.getElementById('dhtmlx-gantt-chart').getAttribute('data-project-id');
+        var taskId = task.id;
+        
+        // Build the Kanboard task view URL
+        var taskUrl = window.location.origin + window.location.pathname.replace(/\/[^\/]*\/[^\/]*$/, '') + 
+                      '?controller=TaskViewController&action=show&task_id=' + taskId + '&project_id=' + projectId;
+        
+        // Create button element using DOM (CSP-compliant - no inline onclick)
+        var button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'gantt_btn_set gantt_view_kanboard_btn';
+        button.style.cssText = 'margin: 5px; padding: 8px 16px; background: #3498db; color: white; border: none; border-radius: 4px; cursor: pointer;';
+        button.innerHTML = '<i class="fa fa-external-link"></i> View Task in Kanboard';
+        
+        // Attach event listener programmatically (CSP-compliant)
+        button.addEventListener('click', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            window.open(taskUrl, '_blank');
+            return false;
+        });
+        
+        // Clear node and append button
+        node.innerHTML = '';
+        node.appendChild(button);
+    },
+    get_value: function(node, task, section) {
+        return task[section.map_to];
+    },
+    focus: function(node) {
+        // No focus needed for button
+    }
+};
+    // new code for lightbox + link to kb
+
+
     
     // Initialize Gantt
     try {
