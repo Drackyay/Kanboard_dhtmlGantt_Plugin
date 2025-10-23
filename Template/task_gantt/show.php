@@ -119,6 +119,9 @@
             removeLink: "<?= $this->url->href('TaskGanttController', 'removeDependency', array('project_id' => $project['id'], 'plugin' => 'DhtmlGantt')) ?>"
         };
         
+        // Debug: Log the URLs being generated
+        console.log('Generated URLs:', window.ganttUrls);
+        
         // Add some sample data if no tasks exist for testing
         if (!window.taskData || (!window.taskData.data && !Array.isArray(window.taskData)) || 
             (window.taskData.data && window.taskData.data.length === 0) ||

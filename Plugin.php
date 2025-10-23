@@ -23,6 +23,13 @@ class Plugin extends Base
         $this->route->addRoute('project/:project_id/gantt', 'ProjectGanttController', 'show', 'DhtmlGantt');
         $this->route->addRoute('project/:project_id/gantt/data', 'ProjectGanttController', 'tasks', 'DhtmlGantt');
 
+        // Task Gantt API routes for task operations and dependency management
+        $this->route->addRoute('dhtmlgantt/:project_id/save', 'TaskGanttController', 'save', 'DhtmlGantt');
+        $this->route->addRoute('dhtmlgantt/:project_id/create', 'TaskGanttController', 'create', 'DhtmlGantt');
+        $this->route->addRoute('dhtmlgantt/:project_id/remove', 'TaskGanttController', 'remove', 'DhtmlGantt');
+        $this->route->addRoute('dhtmlgantt/:project_id/dependency', 'TaskGanttController', 'dependency', 'DhtmlGantt');
+        $this->route->addRoute('dhtmlgantt/:project_id/dependency/remove', 'TaskGanttController', 'removeDependency', 'DhtmlGantt');
+
         //
         // Access map
         //
@@ -35,9 +42,16 @@ class Plugin extends Base
         $this->projectAccessMap->add('ProjectGanttController', 'create', Role::PROJECT_MEMBER);
         $this->projectAccessMap->add('ProjectGanttController', 'remove', Role::PROJECT_MEMBER);
 
-        // (Keep existing mappings if you still use TaskGanttController)
-        $this->projectAccessMap->add('ProjectGanttController', 'save', Role::PROJECT_MANAGER);
+        // TaskGanttController permissions
+        $this->projectAccessMap->add('TaskGanttController', 'show', Role::PROJECT_VIEWER);
         $this->projectAccessMap->add('TaskGanttController', 'save', Role::PROJECT_MEMBER);
+        $this->projectAccessMap->add('TaskGanttController', 'create', Role::PROJECT_MEMBER);
+        $this->projectAccessMap->add('TaskGanttController', 'remove', Role::PROJECT_MEMBER);
+        $this->projectAccessMap->add('TaskGanttController', 'dependency', Role::PROJECT_MEMBER);
+        $this->projectAccessMap->add('TaskGanttController', 'removeDependency', Role::PROJECT_MEMBER);
+        
+        // ProjectGanttController permissions
+        $this->projectAccessMap->add('ProjectGanttController', 'save', Role::PROJECT_MANAGER);
 
         //
         // Template hooks (menus, sidebar, etc.)

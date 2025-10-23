@@ -489,6 +489,76 @@ function setupGanttEventHandlers() {
                 console.error('Error saving task:', error);
             });
         });
+
+        // Handle dependency creation when user draws arrows in Gantt
+        gantt.attachEvent("onAfterLinkAdd", function(id, link) {
+            console.log('Link created, sending to server:', id, link);
+            console.log('Using URL:', window.ganttUrls.createLink);
+            
+            // Send dependency to server using fetch API
+            fetch(window.ganttUrls.createLink, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({
+                    source: link.source,
+                    target: link.target,
+                    type: link.type
+                })
+            })
+            .then(response => {
+                console.log('Response status:', response.status);
+                console.log('Response headers:', response.headers);
+                return response.text(); // Get as text first to see what we're getting
+            })
+            .then(text => {
+                console.log('Raw response:', text);
+                try {
+                    const data = JSON.parse(text);
+                    console.log('Dependency creation response:', data);
+                    if (data.result !== 'ok') {
+                        console.error('Failed to create dependency:', data.message);
+                        // Remove the link from the Gantt if creation failed
+                        gantt.deleteLink(id);
+                    }
+                } catch (parseError) {
+                    console.error('JSON parse error:', parseError);
+                    console.error('Response was not valid JSON:', text);
+                    // Remove the link from the Gantt if creation failed
+                    gantt.deleteLink(id);
+                }
+            })
+            .catch(error => {
+                console.error('Error creating dependency:', error);
+                // Remove the link from the Gantt if creation failed
+                gantt.deleteLink(id);
+            });
+        });
+
+        // Handle dependency removal when user deletes arrows in Gantt
+        gantt.attachEvent("onAfterLinkDelete", function(id, link) {
+            console.log('Link deleted, sending to server:', id, link);
+            
+            // Send removal request to server using fetch API
+            fetch(window.ganttUrls.removeLink, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({
+                    id: id,
+                    source: link.source,
+                    target: link.target
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                console.log('Dependency removal response:', data);
+                if (data.result !== 'ok') {
+                    console.error('Failed to remove dependency:', data.message);
+                }
+            })
+            .catch(error => {
+                console.error('Error removing dependency:', error);
+            });
+        });
         
         console.log('Event-based data handling initialized successfully');
         

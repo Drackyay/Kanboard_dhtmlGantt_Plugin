@@ -153,49 +153,80 @@ class TaskGanttController extends BaseController
      */
     public function dependency()
     {
-        $this->getProject();
-        $data = $this->request->getJson();
+        // Debug logging
+        error_log('DHtmlX Gantt - Dependency method called');
+        error_log('Request method: ' . $_SERVER['REQUEST_METHOD']);
+        error_log('Content type: ' . ($_SERVER['CONTENT_TYPE'] ?? 'not set'));
         
-        if (empty($data['source']) || empty($data['target'])) {
-            $this->response->json(array('result' => 'error', 'message' => 'Missing task IDs'), 400);
+        try {
+            $project = $this->getProject();
+            error_log('Project ID: ' . $project['id']);
+            
+            $data = $this->request->getJson();
+            error_log('Received data: ' . json_encode($data));
+            
+            if (empty($data['source']) || empty($data['target'])) {
+                error_log('Missing source or target task IDs');
+                $this->response->json(array('result' => 'error', 'message' => 'Missing task IDs'), 400);
+                return;
+            }
+        } catch (Exception $e) {
+            error_log('Error in dependency method: ' . $e->getMessage());
+            $this->response->json(array('result' => 'error', 'message' => 'Server error: ' . $e->getMessage()), 500);
             return;
         }
 
-        $sourceTaskId = (int) $data['source'];
-        $targetTaskId = (int) $data['target'];
+        try {
+            $sourceTaskId = (int) $data['source'];
+            $targetTaskId = (int) $data['target'];
+            error_log('Processing dependency: ' . $sourceTaskId . ' -> ' . $targetTaskId);
 
-        // Validate that both tasks exist and belong to the current project
-        $project = $this->getProject();
-        $sourceTask = $this->taskFinderModel->getById($sourceTaskId);
-        $targetTask = $this->taskFinderModel->getById($targetTaskId);
+            // Validate that both tasks exist and belong to the current project
+            $sourceTask = $this->taskFinderModel->getById($sourceTaskId);
+            $targetTask = $this->taskFinderModel->getById($targetTaskId);
 
-        if (!$sourceTask || !$targetTask) {
-            $this->response->json(array('result' => 'error', 'message' => 'One or both tasks not found'), 404);
-            return;
-        }
+            if (!$sourceTask || !$targetTask) {
+                error_log('Task validation failed - source: ' . ($sourceTask ? 'found' : 'not found') . ', target: ' . ($targetTask ? 'found' : 'not found'));
+                $this->response->json(array('result' => 'error', 'message' => 'One or both tasks not found'), 404);
+                return;
+            }
 
-        if ($sourceTask['project_id'] != $project['id'] || $targetTask['project_id'] != $project['id']) {
-            $this->response->json(array('result' => 'error', 'message' => 'Tasks must belong to the same project'), 403);
-            return;
-        }
+            if ($sourceTask['project_id'] != $project['id'] || $targetTask['project_id'] != $project['id']) {
+                error_log('Project validation failed - source project: ' . $sourceTask['project_id'] . ', target project: ' . $targetTask['project_id'] . ', expected: ' . $project['id']);
+                $this->response->json(array('result' => 'error', 'message' => 'Tasks must belong to the same project'), 403);
+                return;
+            }
 
-        // Check for circular dependencies
-        if ($this->wouldCreateCircularDependency($sourceTaskId, $targetTaskId)) {
-            $this->response->json(array('result' => 'error', 'message' => 'Circular dependency detected'), 400);
-            return;
-        }
+            // Check for circular dependencies
+            if ($this->wouldCreateCircularDependency($sourceTaskId, $targetTaskId)) {
+                error_log('Circular dependency detected');
+                $this->response->json(array('result' => 'error', 'message' => 'Circular dependency detected'), 400);
+                return;
+            }
 
-        // Create new dependency
-        $result = $this->taskLinkModel->create(array(
-            'task_id' => $targetTaskId,
-            'opposite_task_id' => $sourceTaskId,
-            'link_id' => 1, // Default link type (relates to)
-        ));
+            // Get the "blocks" link type ID
+            $blocksLinkId = $this->getLinkIdByLabel('blocks');
+            error_log('Blocks link ID: ' . ($blocksLinkId ? $blocksLinkId : 'not found'));
+            
+            if (!$blocksLinkId) {
+                $this->response->json(array('result' => 'error', 'message' => 'Blocks relationship type not found'), 500);
+                return;
+            }
 
-        if ($result) {
-            $this->response->json(array('result' => 'ok', 'message' => 'Dependency created successfully'), 201);
-        } else {
-            $this->response->json(array('result' => 'error', 'message' => 'Unable to create dependency'), 500);
+            // Create "blocks" dependency: source blocks target
+            // TaskLinkModel::create() expects 3 separate arguments: (taskId, oppositeTaskId, linkId)
+            $result = $this->taskLinkModel->create($sourceTaskId, $targetTaskId, $blocksLinkId);
+            error_log('Dependency creation result: ' . ($result ? 'success' : 'failed'));
+
+            if ($result) {
+                $this->response->json(array('result' => 'ok', 'message' => 'Dependency created successfully'), 201);
+            } else {
+                $this->response->json(array('result' => 'error', 'message' => 'Unable to create dependency'), 500);
+            }
+        } catch (Exception $e) {
+            error_log('Exception in dependency creation: ' . $e->getMessage());
+            error_log('Stack trace: ' . $e->getTraceAsString());
+            $this->response->json(array('result' => 'error', 'message' => 'Server error: ' . $e->getMessage()), 500);
         }
     }
 
@@ -204,20 +235,34 @@ class TaskGanttController extends BaseController
      */
     public function removeDependency()
     {
-        $this->getProject();
-        $data = $this->request->getJson();
+        // Debug logging
+        error_log('DHtmlX Gantt - removeDependency method called');
         
-        if (empty($data['id'])) {
-            $this->response->json(array('result' => 'error', 'message' => 'Missing link ID'), 400);
-            return;
-        }
+        try {
+            $project = $this->getProject();
+            $data = $this->request->getJson();
+            error_log('Remove dependency data: ' . json_encode($data));
+            
+            if (empty($data['id'])) {
+                error_log('Missing link ID for removal');
+                $this->response->json(array('result' => 'error', 'message' => 'Missing link ID'), 400);
+                return;
+            }
 
-        $linkId = (int) $data['id'];
-        
-        if ($this->taskLinkModel->remove($linkId)) {
-            $this->response->json(array('result' => 'ok', 'message' => 'Dependency removed successfully'), 200);
-        } else {
-            $this->response->json(array('result' => 'error', 'message' => 'Unable to remove dependency'), 500);
+            $linkId = (int) $data['id'];
+            error_log('Attempting to remove link ID: ' . $linkId);
+            
+            $result = $this->taskLinkModel->remove($linkId);
+            error_log('Removal result: ' . ($result ? 'success' : 'failed'));
+            
+            if ($result) {
+                $this->response->json(array('result' => 'ok', 'message' => 'Dependency removed successfully'), 200);
+            } else {
+                $this->response->json(array('result' => 'error', 'message' => 'Unable to remove dependency'), 500);
+            }
+        } catch (Exception $e) {
+            error_log('Exception in removeDependency: ' . $e->getMessage());
+            $this->response->json(array('result' => 'error', 'message' => 'Server error: ' . $e->getMessage()), 500);
         }
     }
 
@@ -258,5 +303,14 @@ class TaskGanttController extends BaseController
         }
 
         return array_unique($dependentTasks);
+    }
+
+    /**
+     * Get link ID by label (e.g., 'blocks', 'is blocked by')
+     */
+    private function getLinkIdByLabel($label)
+    {
+        $link = $this->db->table('links')->eq('label', $label)->findOne();
+        return $link ? $link['id'] : null;
     }
 }

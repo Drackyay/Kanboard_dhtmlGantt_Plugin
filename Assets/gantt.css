@@ -171,11 +171,18 @@
     text-shadow: none;
 }
 
+/* Progress bar styling - make more transparent */
+.gantt_task_progress_drag {
+    background: rgba(0, 0, 0, 0.15) !important; /* Very transparent dark overlay */
+    opacity: 0.4 !important; /* Additional transparency */
+}
+
 /* Progress text styling */
 .gantt_task_progress_text {
     color: #2c3e50 !important;
     font-weight: 600;
     text-shadow: 0 1px 2px rgba(255,255,255,0.8) !important;
+    opacity: 0.7 !important; /* Make progress text less prominent */
 }
 
 /* Hover effects for better interaction */
