@@ -37,7 +37,17 @@ class TaskGanttController extends BaseController
 
         if ($sorting === 'date') {
             $filter->getQuery()->asc(TaskModel::TABLE.'.date_started')->asc(TaskModel::TABLE.'.date_due');
-        } else {
+        } 
+
+        // elseif ($sorting === 'assignee') {
+        //     // NEW: Sort by assignee name, with unassigned tasks at the end
+        //     $filter->getQuery()
+        //         ->join('users', 'id', 'owner_id', TaskModel::TABLE, 'LEFT')
+        //         ->asc('COALESCE(users.name, users.username, "ZZZ_Unassigned")')
+        //         ->asc(TaskModel::TABLE.'.position');
+        // }
+        
+        else {
             $filter->getQuery()->asc('column_position')->asc(TaskModel::TABLE.'.position');
         }
 

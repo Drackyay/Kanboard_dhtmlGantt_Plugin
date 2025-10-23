@@ -9,6 +9,9 @@
             <li <?= $sorting === 'date' ? 'class="active"' : '' ?>>
                 <?= $this->url->icon('sort-amount-asc', t('Sort by date'), 'TaskGanttController', 'show', array('project_id' => $project['id'], 'sorting' => 'date', 'plugin' => 'DhtmlGantt')) ?>
             </li>
+
+
+
             <li>
                 <?= $this->modal->large('plus', t('Add task'), 'TaskCreationController', 'show', array('project_id' => $project['id'])) ?>
             </li>
@@ -36,6 +39,12 @@
                 <button id="dhtmlx-add-task" class="btn btn-blue" title="<?= t('Add Task') ?>">
                     <i class="fa fa-plus"></i> <?= t('Add Task') ?>
                 </button>
+
+
+                <!-- NEW: Group by Assignee -->
+                <button id="dhtmlx-group-assignee" class="btn" title="<?= t('Group by Assignee') ?>">
+    <i class="fa fa-users"></i> <?= t('Group by Assignee') ?>
+</button>
                 
                 <button id="dhtmlx-zoom-in" class="btn" title="<?= t('Zoom In') ?>">
                     <i class="fa fa-search-plus"></i>
@@ -85,7 +94,10 @@
                     </div>
                 </div>
                 
-                <div class="dhtmlx-info-section">
+
+
+
+                <!-- <div class="dhtmlx-info-section">
                     <h3><?= t('Legend') ?></h3>
                     <div class="dhtmlx-legend">
                         <div class="dhtmlx-legend-item">
@@ -101,7 +113,35 @@
                             <span><?= t('High Priority') ?></span>
                         </div>
                     </div>
+                </div> -->
+
+
+                <div class="dhtmlx-info-section">
+                    <h3><?= t('Legend') ?></h3>
+                    <div class="dhtmlx-legend">
+                        <div class="dhtmlx-legend-item">
+                            <span class="dhtmlx-legend-color" style="background: #95a5a6;"></span>
+                            <span><?= t('Normal Priority') ?></span>
+                        </div>
+                        <div class="dhtmlx-legend-item">
+                            <span class="dhtmlx-legend-color" style="background: #3498db;"></span>
+                            <span><?= t('Low Priority') ?></span>
+                        </div>
+                        <div class="dhtmlx-legend-item">
+                            <span class="dhtmlx-legend-color" style="background: #f39c12;"></span>
+                            <span><?= t('Medium Priority') ?></span>
+                        </div>
+                        <div class="dhtmlx-legend-item">
+                            <span class="dhtmlx-legend-color" style="background: #e74c3c;"></span>
+                            <span><?= t('High Priority') ?></span>
+                        </div>
+                    </div>
                 </div>
+
+
+
+
+
             </div>
         </div>
 
@@ -224,7 +264,7 @@
     border-radius: 3px;
 }
 
-/* DHtmlX Gantt custom styles */
+/* DHtmlX Gantt custom styles
 .dhtmlx-priority-high .gantt_task_line {
     background: #e74c3c !important;
     border-color: #c0392b !important;
@@ -241,6 +281,36 @@
 }
 
 .dhtmlx-readonly .gantt_task_line {
+    opacity: 0.6;
+}
+
+.btn-dhtmlx-view.active {
+    background-color: #667eea !important;
+    color: white !important;
+} */
+
+ /* DHtmlX Gantt custom styles */
+.gantt_task_line.dhtmlx-priority-high {
+    background: #e74c3c !important;      /* Red */
+    border-color: #c0392b !important;
+}
+
+.gantt_task_line.dhtmlx-priority-medium {
+    background: #f39c12 !important;      /* Orange */
+    border-color: #e67e22 !important;
+}
+
+.gantt_task_line.dhtmlx-priority-low {
+    background: #3498db !important;      /* Blue */
+    border-color: #2980b9 !important;
+}
+
+.gantt_task_line.dhtmlx-priority-normal {
+    background: #95a5a6 !important;      /* Gray */
+    border-color: #7f8c8d !important;
+}
+
+.gantt_task_line.dhtmlx-readonly {
     opacity: 0.6;
 }
 
