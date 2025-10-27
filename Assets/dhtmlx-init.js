@@ -407,12 +407,26 @@ function initDhtmlxGantt() {
         return "<span>" + Math.round(task.progress * 100) + "% </span>";
     };
     
-    // Task text template - show "M" for milestones
+    // Task text template - show task name with assignee for regular tasks, "M" for milestones
     gantt.templates.task_text = function(start, end, task) {
         if (task.is_milestone) {
             return "M";
         }
-        return task.text;
+        
+        var text = task.text;
+        // Add assignee name in brackets if available
+        if (task.assignee && task.assignee.trim() !== '') {
+            text += " [" + task.assignee + "]";
+        }
+        return text;
+    };
+    
+    // Right-side text template - show assignee with icon
+    gantt.templates.rightside_text = function(start, end, task) {
+        if (task.assignee && task.assignee.trim() !== '') {
+            return "👤 " + task.assignee;
+        }
+        return "";
     };
     
     // Tooltip template
@@ -424,6 +438,11 @@ function initDhtmlxGantt() {
         
         if (!task.is_milestone) {
             tooltip += "<b>Priority:</b> " + (task.priority || 'normal');
+        }
+        
+        // Add assignee info to tooltip
+        if (task.assignee && task.assignee.trim() !== '') {
+            tooltip += "<br/><b>Assignee:</b> " + task.assignee;
         }
         
         return tooltip;
@@ -901,12 +920,13 @@ function setupGanttEventHandlers() {
                     const data = JSON.parse(text);
                     console.log('Dependency creation response:', data);
                     if (data.result !== 'ok') {
-                        gantt.message({ type: "error", text: data.message || "Failed to create dependency" });
+                        console.error('Failed to create dependency:', data.message);
                         gantt.deleteLink(id);
                         return;
-                      }
-                      // optional success toast
-                      gantt.message({ type: "info", text: "Dependency created" });
+                    }
+                    // ✅ SUCCESS: Refresh the chart to reflect the changes
+                    console.log('Dependency created successfully, refreshing chart...');
+                    gantt.render();
                 } catch (parseError) {
                     console.error('JSON parse error:', parseError);
                     console.error('Response was not valid JSON:', text);
@@ -938,8 +958,14 @@ function setupGanttEventHandlers() {
             .then(response => response.json())
             .then(data => {
                 console.log('Dependency removal response:', data);
-                if (data.result !== 'ok') {
+                if (data.result === 'ok') {
+                    // ✅ SUCCESS: Refresh the chart to reflect the changes
+                    console.log('Dependency removed successfully, refreshing chart...');
+                    gantt.render();
+                } else {
                     console.error('Failed to remove dependency:', data.message);
+                    // Re-add the link to the UI since server removal failed
+                    gantt.addLink(link);
                 }
             })
             .catch(error => {
