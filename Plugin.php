@@ -27,8 +27,12 @@ class Plugin extends Base
         $this->route->addRoute('dhtmlgantt/:project_id/save', 'TaskGanttController', 'save', 'DhtmlGantt');
         $this->route->addRoute('dhtmlgantt/:project_id/create', 'TaskGanttController', 'create', 'DhtmlGantt');
         $this->route->addRoute('dhtmlgantt/:project_id/remove', 'TaskGanttController', 'remove', 'DhtmlGantt');
-        $this->route->addRoute('dhtmlgantt/:project_id/dependency', 'TaskGanttController', 'dependency', 'DhtmlGantt');
+        // Dependency endpoints (unique paths; one registration each)
+        $this->route->addRoute('dhtmlgantt/:project_id/dependency/add',    'TaskGanttController', 'addDependency',    'DhtmlGantt');
         $this->route->addRoute('dhtmlgantt/:project_id/dependency/remove', 'TaskGanttController', 'removeDependency', 'DhtmlGantt');
+        // (Optional) if you keep the generic POST for creation via `dependency()`:
+        $this->route->addRoute('dhtmlgantt/:project_id/dependency',        'TaskGanttController', 'dependency',       'DhtmlGantt');
+
 
         //
         // Access map
@@ -49,6 +53,7 @@ class Plugin extends Base
         $this->projectAccessMap->add('TaskGanttController', 'remove', Role::PROJECT_MEMBER);
         $this->projectAccessMap->add('TaskGanttController', 'dependency', Role::PROJECT_MEMBER);
         $this->projectAccessMap->add('TaskGanttController', 'removeDependency', Role::PROJECT_MEMBER);
+        $this->projectAccessMap->add('TaskGanttController', 'addDependency',    Role::PROJECT_MEMBER);
         
         // ProjectGanttController permissions
         $this->projectAccessMap->add('ProjectGanttController', 'save', Role::PROJECT_MANAGER);

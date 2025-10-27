@@ -211,7 +211,33 @@
                 return stats;
             }
         };
+        function parentOf(task) {
+            // DHTMLX stores parent IDs (0 or null if top-level)
+            return (task && (task.parent !== undefined && task.parent !== null)) ? task.parent : 0;
+        }
 
+        function sameLevelAllowed(srcTask, tgtTask) {
+            const ps = parentOf(srcTask);
+            const pt = parentOf(tgtTask);
+            return (ps === 0 && pt === 0) || (ps !== 0 && ps === pt);
+        }
+
+        // Intercept link creation before it’s added
+        gantt.attachEvent("onBeforeLinkAdd", function(id, link) {
+            const s = gantt.getTask(link.source);
+            const t = gantt.getTask(link.target);
+
+            if (!sameLevelAllowed(s, t)) {
+                // Show a hint (uses DHTMLX's built-in message system)
+                gantt.message({
+                    text: "⚠️ Dependency rule violated — links can only connect sibling tasks or top-level tasks.",
+                    type: "warning",
+                    expire: 4000
+                });
+                return false; // cancel link creation
+            }
+            return true; // allow valid link
+        });
         console.log("Kanboard DHtmlX Gantt extensions loaded successfully");
     }
 

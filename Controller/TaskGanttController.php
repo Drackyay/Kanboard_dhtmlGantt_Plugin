@@ -385,4 +385,47 @@ class TaskGanttController extends BaseController
         $link = $this->db->table('links')->eq('label', $label)->findOne();
         return $link ? $link['id'] : null;
     }
+    
+    // POST /dhtmlxgantt/:project_id/dependency
+    public function addDependency()
+    {
+        $project = $this->getProject();
+        $payload = json_decode($this->request->getBody(), true) ?: [];
+
+        $source = (int) ($payload['source'] ?? 0);
+        $target = (int) ($payload['target'] ?? 0);
+
+        // 1) Basic checks
+        if (!$source || !$target || $source === $target) {
+            return $this->response->json(['result' => 'error','message' => 'Invalid source/target'], 400);
+        }
+
+        // 2) SAME-LEVEL RULE
+        $s = $this->taskModel->getById($source);
+        $t = $this->taskModel->getById($target);
+        $sParent = (int) ($s['owner_id'] ? 0 : 0); // placeholder; we use internal links to compute parent (see note below)
+
+        // If you already expose parent in your formatter, just read it back from DB:
+        $sParent = (int) ($s['parent_id'] ?? 0);
+        $tParent = (int) ($t['parent_id'] ?? 0);
+
+        $sameLevel = (($sParent === 0 && $tParent === 0) || ($sParent !== 0 && $sParent === $tParent));
+        if (!$sameLevel) {
+            return $this->response->json(['result' => 'error','message' => 'Rule: only siblings or top-level tasks can be linked'], 400);
+        }
+
+        // 3) CIRCULAR check (cheap)
+        if ($this->taskLinkModel->hasLink($target, $source)) {
+            return $this->response->json(['result' => 'error','message' => 'Circular dependency detected'], 400);
+        }
+
+        // 4) Create internal link: “blocks” from source → target
+        $ok = $this->taskLinkModel->create($source, $target, $this->linkModel->getIdByLabel('blocks'));
+        if (!$ok) {
+            return $this->response->json(['result' => 'error','message' => 'Could not create dependency'], 500);
+        }
+
+        return $this->response->json(['result' => 'ok']);
+    }
+
 }

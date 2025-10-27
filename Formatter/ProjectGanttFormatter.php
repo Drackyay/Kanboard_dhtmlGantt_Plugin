@@ -83,6 +83,7 @@ class ProjectGanttFormatter extends Base
             'is_milestone' => $isMilestone,
             'open' => true,
             'readonly' => $this->isReadonly($task),
+            'parent' => (int) ($this->resolveParentId((int)$task['id']) ?? 0),
         );
     }
 
@@ -188,6 +189,64 @@ class ProjectGanttFormatter extends Base
         // Make completed tasks readonly
         return $task['is_active'] == 0;
     }
+    
+    /**
+     * Build taskId -> parentTaskId map using internal links
+     * Parent is detected from link labels: "is a child of" / "is a parent of"
+     *
+     * @param int[] $taskIds
+     * @return array<int,int|null>
+     */
+    private function buildParentMap(array $taskIds): array
+    {
+        if (empty($taskIds)) return [];
+
+        $taskIdSet = array_flip($taskIds);
+        $rows = $this->db->table('task_has_links')
+            ->join('links', 'id', 'link_id') // links.id = task_has_links.link_id
+            ->columns(
+                'links.label',
+                'task_has_links.task_id',
+                'task_has_links.opposite_task_id'
+            )
+            ->in('task_has_links.task_id', $taskIds)
+            ->findAll();
+
+        $parent = [];
+
+        foreach ($rows as $r) {
+            $label = $r['label'] ?? ($r['links.label'] ?? '');
+            $left  = (int)($r['task_id'] ?? ($r['task_has_links.task_id'] ?? 0));
+            $right = (int)($r['opposite_task_id'] ?? ($r['task_has_links.opposite_task_id'] ?? 0));
+
+            if ($label === 'is a child of') {
+                // left (child) -> right (parent)
+                if (isset($taskIdSet[$left])) $parent[$left] = $right;
+            } elseif ($label === 'is a parent of') {
+                // left (parent) -> right (child)
+                if (isset($taskIdSet[$right])) $parent[$right] = $left;
+            }
+        }
+
+        // tasks without an entry are top-level parents; represent as null
+        foreach ($taskIds as $id) {
+            if (!array_key_exists($id, $parent)) $parent[$id] = null;
+        }
+
+        return $parent;
+    }
+
+    /** Return true if an arrow between A and B is allowed per “same-level only” rules */
+    private function sameLevelAllowed(?int $parentA, ?int $parentB): bool
+    {
+        // both are top-level parents
+        if ($parentA === null && $parentB === null) return true;
+        // both are children of the same parent
+        if ($parentA !== null && $parentA === $parentB) return true;
+        // otherwise, cross-level — block
+        return false;
+    }
+
 
     /**
      * Format task dependencies/links (alias-free for PicoDb/SQLite)
@@ -198,17 +257,14 @@ class ProjectGanttFormatter extends Base
     private function formatLinks(array $tasks)
     {
         $links = array();
-        if (empty($tasks)) {
-            return $links;
-        }
+        if (empty($tasks)) return $links;
 
-        // Only include links among the tasks we're rendering
-        $taskIds   = array_map(function ($t) { return (int) $t['id']; }, $tasks);
-        $taskIdSet = array_flip($taskIds);
+        $taskIds  = array_map(fn($t) => (int)$t['id'], $tasks);
+        $taskSet  = array_flip($taskIds);
+        $parentMap = $this->buildParentMap($taskIds);
 
-        // Query internal links (no aliases)
         $rows = $this->db->table('task_has_links')
-            ->join('links', 'id', 'link_id') // links.id = task_has_links.link_id
+            ->join('links', 'id', 'link_id')
             ->columns(
                 'task_has_links.id',
                 'links.label',
@@ -219,39 +275,72 @@ class ProjectGanttFormatter extends Base
             ->findAll();
 
         foreach ($rows as $r) {
-            // PicoDb sometimes strips table qualifiers — support both forms
-            $left  = (int) ( $r['task_id']          ?? ($r['task_has_links.task_id'] ?? 0) );
-            $right = (int) ( $r['opposite_task_id'] ?? ($r['task_has_links.opposite_task_id'] ?? 0) );
-            $label =        ( $r['label']           ?? ($r['links.label'] ?? '') );
-            $rowId = (int) ( $r['id']               ?? ($r['task_has_links.id'] ?? 0) );
+            $left   = (int) ( $r['task_id']          ?? ($r['task_has_links.task_id'] ?? 0) );
+            $right  = (int) ( $r['opposite_task_id'] ?? ($r['task_has_links.opposite_task_id'] ?? 0) );
+            $label  =        ( $r['label']           ?? ($r['links.label'] ?? '') );
+            $rowId  = (int) ( $r['id']               ?? ($r['task_has_links.id'] ?? 0) );
 
-            if ($left === 0 || $right === 0) {
-                continue;
-            }
-            if (!isset($taskIdSet[$right])) {
-                continue;
-            }
+            if ($left === 0 || $right === 0) continue;
+            if (!isset($taskSet[$right]))     continue;
 
-            // Map only true dependencies (Finish-to-Start)
             if ($label === 'blocks') {
-                $source = $left;   // A blocks B → A → B
-                $target = $right;
+                $source = $left;  $target = $right;
             } elseif ($label === 'is blocked by') {
-                $source = $right;  // invert
-                $target = $left;
+                $source = $right; $target = $left;
             } else {
-                continue; // ignore non-dependency relations
+                continue;
             }
+
+            $parentA = $parentMap[$source] ?? null;
+            $parentB = $parentMap[$target] ?? null;
+            if (!$this->sameLevelAllowed($parentA, $parentB)) continue;
 
             $links[] = array(
                 'id'     => $rowId,
                 'source' => $source,
                 'target' => $target,
-                'type'   => '0', // DHTMLX Finish-to-Start
+                'type'   => '0',
             );
         }
 
         return $links;
+    }
+
+    /**
+     * Resolve a task's parent task id using internal links.
+     * Returns int parent id, or null if top-level (no parent found).
+     */
+    private function resolveParentId(int $taskId): ?int
+    {
+        // Case 1: row says "task_id (child) is a child of opposite_task_id (parent)"
+        $rows = $this->db->table('task_has_links')
+            ->join('links', 'id', 'link_id')
+            ->columns('links.label', 'task_has_links.task_id', 'task_has_links.opposite_task_id')
+            ->eq('task_has_links.task_id', $taskId)
+            ->findAll();
+
+        foreach ($rows as $r) {
+            $label = $r['label'] ?? ($r['links.label'] ?? '');
+            if ($label === 'is a child of') {
+                return (int) ($r['opposite_task_id'] ?? ($r['task_has_links.opposite_task_id'] ?? 0)) ?: null;
+            }
+        }
+
+        // Case 2: inverse row says "task_id (parent) is a parent of opposite_task_id (child == current task)"
+        $rows = $this->db->table('task_has_links')
+            ->join('links', 'id', 'link_id')
+            ->columns('links.label', 'task_has_links.task_id', 'task_has_links.opposite_task_id')
+            ->eq('task_has_links.opposite_task_id', $taskId)
+            ->findAll();
+
+        foreach ($rows as $r) {
+            $label = $r['label'] ?? ($r['links.label'] ?? '');
+            if ($label === 'is a parent of') {
+                return (int) ($r['task_id'] ?? ($r['task_has_links.task_id'] ?? 0)) ?: null;
+            }
+        }
+
+        return null; // top-level if we didn't find a parent link
     }
 
 }

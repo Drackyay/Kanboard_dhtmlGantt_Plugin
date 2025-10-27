@@ -295,9 +295,6 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Load task data from window.taskData (set by inline script in template)
 
-
-    var taskDataString = container.getAttribute('data-tasks');
-    var taskData = null;
     
     try {
         if (taskDataString) {
@@ -686,6 +683,11 @@ function loadGanttData(data) {
         console.log('No valid data, creating empty gantt');
         gantt.parse({data: [], links: []});
     }
+    gantt.eachTask(function (t) {
+        if (t.parent === undefined || t.parent === null) {
+            t.parent = 0;       // treat as top-level
+        }
+    });
     
     updateStatistics();
 }
@@ -763,69 +765,50 @@ function smartFitToScreen() {
 }
 //new
 
-
-
+  
 function setupGanttEventHandlers() {
+    // Bind once guard
+    if (window.__ganttHandlersBound) {
+        console.log('[Gantt] handlers already bound — skipping');
+        return;
+    }
+    window.__ganttHandlersBound = true;
+
+    // de-duped toast helper (global-ish)
+    if (!window.singleToast) {
+        let __lastToast = { text: "", at: 0 };
+        window.singleToast = function(text) {
+            const now = Date.now();
+            if (text === __lastToast.text && now - __lastToast.at < 1000) return;
+            __lastToast = { text, at: now };
+            gantt.message({ type: "warning", text, expire: 1500 });
+        };
+    }
     // Data processor for CRUD operations - URLs will be set by template
     if (typeof window.ganttUrls !== 'undefined' && window.ganttUrls.update) {
         console.log('Setting up data processor with URLs:', window.ganttUrls);
         
         // Use simplified event-based approach instead of data processor
-        
-        // Handle new task creation
-        gantt.attachEvent("onAfterTaskAdd", function(id, task) {
-            console.log('New task created, sending to server:', id, task);
-            
-            // Only send to server if this is a real task (not during initial load)
-            if (gantt._loading) {
-                console.log('Skipping task creation during data load');
-                return true;
-            }
-            
-            // Send new task to server
-            fetch(window.ganttUrls.create, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    text: task.text || 'New Task',
-                    start_date: task.start_date,
-                    end_date: task.end_date,
-                    priority: task.priority || 'normal',
-                    is_milestone: task.is_milestone ? 1 : 0
-                })
-            })
-            .then(response => response.json())
-            .then(data => {
-                console.log('Task creation response:', data);
-                if (data.result === 'ok' && data.id) {
-                    // Update the task with the real ID from server
-                    var oldId = id;
-                    task.id = data.id;
-                    
-                    // Apply green color if milestone
-                    if (task.is_milestone) {
-                        task.color = "#27ae60";
-                        console.log('Applied green color to milestone task:', data.id);
-                    }
-                    
-                    gantt.changeTaskId(oldId, data.id);
-                    gantt.updateTask(data.id);
-                    console.log('Task created successfully with ID:', data.id);
-                } else {
-                    console.error('Failed to create task:', data.message);
-                    gantt.deleteTask(id);
-                }
-            })
-            .catch(error => {
-                console.error('Error creating task:', error);
-                gantt.deleteTask(id);
-            });
-            
-            return true;
-        });
-        
+        // ---- same-level rule helpers ----
+    function _parentOf(task){
+        return (task && task.parent != null && task.parent !== undefined) ? task.parent : 0;
+    }
+    function _sameLevelAllowed(a, b){
+        const pa = _parentOf(a);
+        const pb = _parentOf(b);
+        // allowed: both top-level OR both children of the same parent
+        return (pa === 0 && pb === 0) || (pa !== 0 && pa === pb);
+    }
+    
+    // dhtmlx built-in validator (runs before adding the link)
+    gantt.attachEvent("onLinkValidation", function(link){
+        const s = gantt.getTask(link.source);
+        const t = gantt.getTask(link.target);
+        const ok = _sameLevelAllowed(s, t);
+        if (!ok) singleToast("Rule: only siblings or top-level tasks can be linked.");
+        return ok;
+      });
+    
         // Handle task updates (only for existing tasks)
         gantt.attachEvent("onAfterTaskUpdate", function(id, task) {
             console.log('Task updated, sending to server:', id, task);
@@ -891,7 +874,7 @@ function setupGanttEventHandlers() {
             // Return true to allow the deletion in the UI
             return true;
         });
-
+        
         // Handle dependency creation when user draws arrows in Gantt
         gantt.attachEvent("onAfterLinkAdd", function(id, link) {
             console.log('Link created, sending to server:', id, link);
@@ -918,10 +901,12 @@ function setupGanttEventHandlers() {
                     const data = JSON.parse(text);
                     console.log('Dependency creation response:', data);
                     if (data.result !== 'ok') {
-                        console.error('Failed to create dependency:', data.message);
-                        // Remove the link from the Gantt if creation failed
+                        gantt.message({ type: "error", text: data.message || "Failed to create dependency" });
                         gantt.deleteLink(id);
-                    }
+                        return;
+                      }
+                      // optional success toast
+                      gantt.message({ type: "info", text: "Dependency created" });
                 } catch (parseError) {
                     console.error('JSON parse error:', parseError);
                     console.error('Response was not valid JSON:', text);
