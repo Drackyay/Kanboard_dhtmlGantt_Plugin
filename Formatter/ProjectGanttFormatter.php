@@ -50,6 +50,19 @@ class ProjectGanttFormatter extends Base
             
         $duration = $this->calculateDuration($task);
         
+        // Get assignee name
+        $assignee = '';
+        if (!empty($task['owner_id'])) {
+            $user = $this->userModel->getById($task['owner_id']);
+            if ($user) {
+                $assignee = $user['username'];
+            }
+        }
+        
+        // Check if task is a milestone
+        $metadata = $this->taskMetadataModel->getAll($task['id']);
+        $isMilestone = !empty($metadata['is_milestone']) && $metadata['is_milestone'] === '1';
+        
         return array(
             'id' => $task['id'],
             'text' => $task['title'],
@@ -59,9 +72,11 @@ class ProjectGanttFormatter extends Base
             'priority' => $this->mapPriority($task['priority']),
             'color' => $this->getTaskColor($task),
             'owner_id' => $task['owner_id'],
+            'assignee' => $assignee,
             'category_id' => $task['category_id'],
             'swimlane_id' => $task['swimlane_id'],
             'column_id' => $task['column_id'],
+            'type' => $isMilestone ? 'milestone' : 'task',
             'open' => true,
             'readonly' => $this->isReadonly($task),
         );

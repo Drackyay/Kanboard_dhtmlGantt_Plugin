@@ -60,6 +60,13 @@ class Plugin extends Base
         $this->template->hook->attach('template:project:dropdown', 'DhtmlGantt:project/dropdown');
         $this->template->hook->attach('template:project-list:menu:after', 'DhtmlGantt:project_list/menu');
         $this->template->hook->attach('template:config:sidebar', 'DhtmlGantt:config/sidebar');
+        
+        // Task form hooks for milestone checkbox
+        $this->template->hook->attach('template:task:form:third-column', 'DhtmlGantt:task/milestone_field');
+        
+        // Action hooks for saving milestone data
+        $this->hook->on('model:task-creation:aftersave', array($this, 'onTaskCreation'));
+        $this->hook->on('model:task-modification:aftersave', array($this, 'onTaskModification'));
 
         //
         // Assets (ensure correct load order)
@@ -120,5 +127,36 @@ class Plugin extends Base
     public function getCompatibleVersion()
     {
         return '>1.2.3';
+    }
+    
+    /**
+     * Handle task creation - save milestone flag
+     *
+     * @param array $values
+     */
+    public function onTaskCreation(array $values)
+    {
+        if (isset($values['task_id']) && isset($values['is_milestone'])) {
+            $this->taskMetadataModel->save(
+                $values['task_id'],
+                array('is_milestone' => $values['is_milestone'] ? '1' : '0')
+            );
+        }
+    }
+    
+    /**
+     * Handle task modification - save milestone flag
+     *
+     * @param array $values
+     */
+    public function onTaskModification(array $values)
+    {
+        if (isset($values['task_id'])) {
+            $isMilestone = isset($values['is_milestone']) && $values['is_milestone'] ? '1' : '0';
+            $this->taskMetadataModel->save(
+                $values['task_id'],
+                array('is_milestone' => $isMilestone)
+            );
+        }
     }
 }

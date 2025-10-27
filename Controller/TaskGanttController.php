@@ -65,45 +65,71 @@ class TaskGanttController extends BaseController
      */
     public function save()
     {
-        $this->getProject();
-        $changes = $this->request->getJson();
-        $values = [];
-        
-        // Debug logging
-        error_log('DHtmlX Gantt Save - Received data: ' . json_encode($changes));
+        try {
+            $this->getProject();
+            $changes = $this->request->getJson();
+            $values = [];
+            
+            // Debug logging
+            error_log('DHtmlX Gantt Save - Received data: ' . json_encode($changes));
 
-        if (! empty($changes['start_date'])) {
-            $startTime = strtotime($changes['start_date']);
-            if ($startTime !== false) {
-                $values['date_started'] = $startTime;
+            if (! empty($changes['start_date'])) {
+                $startTime = strtotime($changes['start_date']);
+                if ($startTime !== false) {
+                    $values['date_started'] = $startTime;
+                }
             }
-        }
 
-        if (! empty($changes['end_date'])) {
-            $endTime = strtotime($changes['end_date']);
-            if ($endTime !== false) {
-                $values['date_due'] = $endTime;
+            if (! empty($changes['end_date'])) {
+                $endTime = strtotime($changes['end_date']);
+                if ($endTime !== false) {
+                    $values['date_due'] = $endTime;
+                }
             }
-        }
 
-        if (! empty($values)) {
             $task_id = (int) $changes['id'];
-            $values['id'] = $task_id;
             
-            error_log('DHtmlX Gantt Save - Updating task ' . $task_id . ' with values: ' . json_encode($values));
+            // Verify task exists
+            $task = $this->taskFinderModel->getById($task_id);
+            if (!$task) {
+                error_log('DHtmlX Gantt Save - Task not found: ' . $task_id);
+                $this->response->json(array('result' => 'error', 'message' => 'Task not found'), 404);
+                return;
+            }
             
-            $result = $this->taskModificationModel->update($values);
+            // Handle milestone status
+            if (isset($changes['is_milestone'])) {
+                try {
+                    $isMilestone = $changes['is_milestone'] ? '1' : '0';
+                    error_log('DHtmlX Gantt Save - Setting milestone status to: ' . $isMilestone);
+                    $this->taskMetadataModel->save($task_id, array('is_milestone' => $isMilestone));
+                } catch (\Exception $e) {
+                    error_log('DHtmlX Gantt Save - Error saving milestone metadata: ' . $e->getMessage());
+                }
+            }
 
-            if (! $result) {
-                error_log('DHtmlX Gantt Save - Failed to update task ' . $task_id);
-                $this->response->json(array('result' => 'error', 'message' => 'Unable to save task'), 400);
+            if (! empty($values)) {
+                $values['id'] = $task_id;
+                
+                error_log('DHtmlX Gantt Save - Updating task ' . $task_id . ' with values: ' . json_encode($values));
+                
+                $result = $this->taskModificationModel->update($values);
+
+                if (! $result) {
+                    error_log('DHtmlX Gantt Save - Failed to update task ' . $task_id);
+                    $this->response->json(array('result' => 'error', 'message' => 'Unable to save task'), 400);
+                } else {
+                    error_log('DHtmlX Gantt Save - Successfully updated task ' . $task_id);
+                    $this->response->json(array('result' => 'ok', 'message' => 'Task updated successfully'), 200);
+                }
             } else {
-                error_log('DHtmlX Gantt Save - Successfully updated task ' . $task_id);
+                error_log('DHtmlX Gantt Save - No date changes, but milestone might have been updated');
                 $this->response->json(array('result' => 'ok', 'message' => 'Task updated successfully'), 200);
             }
-        } else {
-            error_log('DHtmlX Gantt Save - No changes to save');
-            $this->response->json(array('result' => 'ignored', 'message' => 'No changes'), 200);
+        } catch (\Exception $e) {
+            error_log('DHtmlX Gantt Save - Fatal error: ' . $e->getMessage());
+            error_log('Stack trace: ' . $e->getTraceAsString());
+            $this->response->json(array('result' => 'error', 'message' => 'Server error: ' . $e->getMessage()), 500);
         }
     }
 

@@ -83,6 +83,10 @@ class TaskGanttFormatter extends BaseFormatter implements FormatterInterface
         $start = $task['date_started'] ?: time();
         $end = $task['date_due'] ?: ($start + 24 * 60 * 60); // Default to 1 day duration
 
+        // Check if task is a milestone
+        $metadata = $this->taskMetadataModel->getAll($task['id']);
+        $isMilestone = !empty($metadata['is_milestone']) && $metadata['is_milestone'] === '1';
+        
         return array(
             'id' => $task['id'],
             'text' => $task['title'],
@@ -101,7 +105,7 @@ class TaskGanttFormatter extends BaseFormatter implements FormatterInterface
                 'task_id' => $task['id']
             )),
             'readonly' => $this->isReadonly($task),
-            'type' => 'task',
+            'type' => $isMilestone ? 'milestone' : 'task',
             'open' => true,
         );
     }

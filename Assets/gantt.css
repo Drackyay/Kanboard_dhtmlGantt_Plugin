@@ -105,6 +105,45 @@
     box-shadow: 0 0 10px rgba(102, 126, 234, 0.6);
 }
 
+/* Milestone Styles - Green Diamond */
+.dhtmlx-milestone .gantt_task_line,
+.gantt_task_line.gantt_milestone {
+    background: #27ae60 !important; /* Green color */
+    border-color: #229954 !important;
+}
+
+/* Make milestone marker more visible */
+.gantt_task_line.gantt_milestone {
+    background-color: #27ae60 !important;
+    border: 2px solid #229954 !important;
+}
+
+/* Milestone diamond shape styling */
+.gantt_task_line.gantt_milestone .gantt_task_content {
+    background: transparent;
+}
+
+/* Legend milestone diamond */
+.dhtmlx-legend-milestone {
+    width: 0;
+    height: 0;
+    border: 8px solid transparent;
+    border-bottom-color: #27ae60;
+    position: relative;
+    top: -8px;
+}
+
+.dhtmlx-legend-milestone:after {
+    content: '';
+    position: absolute;
+    left: -8px;
+    top: 8px;
+    width: 0;
+    height: 0;
+    border: 8px solid transparent;
+    border-top-color: #27ae60;
+}
+
 /* Button Styles */
 
 .btn-dhtmlx-view.active {

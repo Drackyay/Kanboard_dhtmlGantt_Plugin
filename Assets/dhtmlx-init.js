@@ -362,12 +362,26 @@ function initDhtmlxGantt() {
     gantt.config.grid_width = 400;
     gantt.config.show_grid = true;
     
+    // Enable milestone support - configure task types
+    gantt.config.types = {
+        task: "task",
+        project: "project",
+        milestone: "milestone"
+    };
+    
+    // CRITICAL: Set type_renderers for proper milestone display
+    gantt.config.type_renderers = gantt.config.type_renderers || {};
+    gantt.config.type_renderers[gantt.config.types.milestone] = function(task) {
+        return gantt.templates.rightside_text(task.start_date, task.end_date, task);
+    };
+    
     // Enable plugins
     gantt.plugins({
         tooltip: true,
         keyboard_navigation: true,
         undo: true,
-        grouping: true  // Add this line
+        grouping: true,
+        marker: true
     });
 
 
@@ -390,7 +404,9 @@ function initDhtmlxGantt() {
     //new
     gantt.templates.task_class = function(start, end, task) {
         var className = "";
-        if (task.priority) {
+        if (task.type === "milestone") {
+            className += "dhtmlx-milestone ";
+        } else if (task.priority) {
             className += "dhtmlx-priority-" + task.priority + " ";
         }
         if (task.readonly) {
@@ -419,6 +435,10 @@ function initDhtmlxGantt() {
     // new code for lightbox + link to kb
     // Configure lightbox sections to add "View in Kanboard" button
 gantt.config.lightbox.sections = [
+    {name: "type", height: 22, map_to: "type", type: "select", options: [
+        {key: "task", label: "Task"},
+        {key: "milestone", label: "Milestone"}
+    ]},
     {name: "description", height: 38, map_to: "text", type: "textarea", focus: true},
     {name: "priority", height: 22, map_to: "priority", type: "select", options: [
         {key: "low", label: "Low"},
@@ -430,7 +450,75 @@ gantt.config.lightbox.sections = [
     {name: "kanboard_link", height: 40, type: "template", map_to: "my_template"}
 ];
 
-// Custom template for the "View in Kanboard" button
+// Handle milestone duration - when type is milestone, set duration to 0
+gantt.attachEvent("onBeforeLightbox", function(id) {
+    var task = gantt.getTask(id);
+    
+    // If it's a milestone, ensure duration is 0 and end_date equals start_date
+    if (task.type === "milestone") {
+        task.duration = 0;
+        task.end_date = gantt.calculateEndDate(task.start_date, 0);
+    }
+    
+    return true;
+});
+
+// Dynamically change lightbox sections based on task type
+gantt.attachEvent("onBeforeLightbox", function(id) {
+    var task = gantt.getTask(id);
+    
+    // Configure different time sections for milestones vs tasks
+    if (task.type === "milestone") {
+        // For milestones, only show start date (no duration)
+        gantt.config.lightbox.sections = [
+            {name: "type", height: 22, map_to: "type", type: "select", options: [
+                {key: "task", label: "Task"},
+                {key: "milestone", label: "Milestone"}
+            ]},
+            {name: "description", height: 38, map_to: "text", type: "textarea", focus: true},
+            {name: "priority", height: 22, map_to: "priority", type: "select", options: [
+                {key: "low", label: "Low"},
+                {key: "normal", label: "Normal"},
+                {key: "medium", label: "Medium"},
+                {key: "high", label: "High"}
+            ]},
+            {name: "time", type: "time", map_to: "start_date"},
+            {name: "kanboard_link", height: 40, type: "template", map_to: "my_template"}
+        ];
+    } else {
+        // For tasks, show full duration section
+        gantt.config.lightbox.sections = [
+            {name: "type", height: 22, map_to: "type", type: "select", options: [
+                {key: "task", label: "Task"},
+                {key: "milestone", label: "Milestone"}
+            ]},
+            {name: "description", height: 38, map_to: "text", type: "textarea", focus: true},
+            {name: "priority", height: 22, map_to: "priority", type: "select", options: [
+                {key: "low", label: "Low"},
+                {key: "normal", label: "Normal"},
+                {key: "medium", label: "Medium"},
+                {key: "high", label: "High"}
+            ]},
+            {name: "time", type: "duration", map_to: "auto"},
+            {name: "kanboard_link", height: 40, type: "template", map_to: "my_template"}
+        ];
+    }
+    
+    return true;
+});
+
+// When type changes in lightbox, close and reopen to refresh sections
+gantt.attachEvent("onLightboxSave", function(id, task, is_new) {
+    // Ensure milestones have duration 0
+    if (task.type === "milestone") {
+        task.duration = 0;
+        task.end_date = task.start_date;
+    }
+    return true;
+});
+
+// Custom labels for lightbox sections
+gantt.locale.labels.section_type = "Type";
 gantt.locale.labels.section_kanboard_link = "Quick Actions";
 gantt.form_blocks["template"] = {
     render: function(sns) {
@@ -488,16 +576,52 @@ gantt.form_blocks["template"] = {
 function loadGanttData(data) {
     console.log('Loading Gantt data...', data);
     
+    // Process data to ensure milestones have correct properties
     if (data && data.data) {
         console.log('Using data.data format, tasks:', data.data.length);
+        
+        // Debug: Check and fix milestone tasks
+        data.data.forEach(function(task) {
+            console.log('Task:', task.id, 'Type:', task.type, 'Duration:', task.duration);
+            if (task.type === 'milestone') {
+                task.duration = 0;
+                task.end_date = task.start_date;
+                console.log('Fixed milestone task:', task.id);
+            }
+        });
+        
         gantt.parse(data);
     } else if (Array.isArray(data)) {
         console.log('Using array format, tasks:', data.length);
+        
+        // Debug and fix milestones
+        data.forEach(function(task) {
+            console.log('Task:', task.id, 'Type:', task.type, 'Duration:', task.duration);
+            if (task.type === 'milestone') {
+                task.duration = 0;
+                task.end_date = task.start_date;
+                console.log('Fixed milestone task:', task.id);
+            }
+        });
+        
         gantt.parse({data: data, links: []});
     } else {
         console.log('No valid data, creating empty gantt');
         gantt.parse({data: [], links: []});
     }
+    
+    // After parsing, verify all milestones are correct
+    gantt.eachTask(function(task) {
+        if (task.type === 'milestone') {
+            console.log('Milestone in gantt:', task.id, 'Duration:', task.duration, 'Type:', task.type);
+            if (task.duration !== 0) {
+                task.duration = 0;
+                task.end_date = task.start_date;
+                gantt.updateTask(task.id);
+                console.log('Corrected milestone:', task.id);
+            }
+        }
+    });
     
     updateStatistics();
 }
@@ -586,7 +710,7 @@ function setupGanttEventHandlers() {
         gantt.attachEvent("onAfterTaskUpdate", function(id, task) {
             console.log('Task updated, sending to server:', id, task);
             
-            // Send update to server
+            // Send update to server including milestone type
             fetch(window.ganttUrls.update, {
                 method: 'POST',
                 headers: {
@@ -596,7 +720,9 @@ function setupGanttEventHandlers() {
                     id: id,
                     start_date: task.start_date,
                     end_date: task.end_date,
-                    text: task.text
+                    text: task.text,
+                    type: task.type,
+                    is_milestone: task.type === 'milestone' ? 1 : 0
                 })
             })
             .then(response => response.json())
@@ -762,6 +888,17 @@ if (groupByAssigneeBtn) {
 }//NEWNEW
 
     
+    // Expand all button
+    var expandBtn = document.getElementById('dhtmlx-expand-all');
+    if (expandBtn) {
+        expandBtn.addEventListener('click', function() {
+            gantt.eachTask(function(task) {
+                task.$open = true;
+            });
+            gantt.render();
+        });
+    }
+    
     // View mode buttons - add delay to ensure DOM is ready
     setTimeout(function() {
         const viewButtons = document.querySelectorAll('.btn-dhtmlx-view');
@@ -791,7 +928,15 @@ if (groupByAssigneeBtn) {
         console.log('Task statistics update for:', id, task);
         updateStatistics();
     });
-    gantt.attachEvent("onAfterTaskAdd", updateStatistics);
+    gantt.attachEvent("onAfterTaskAdd", function(id, task) {
+        // Ensure milestones have proper settings
+        if (task.type === "milestone") {
+            task.duration = 0;
+            task.end_date = task.start_date;
+            gantt.updateTask(id);
+        }
+        updateStatistics();
+    });
     gantt.attachEvent("onAfterTaskDelete", updateStatistics);
 
 
