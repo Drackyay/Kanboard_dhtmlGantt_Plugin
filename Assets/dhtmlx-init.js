@@ -362,26 +362,12 @@ function initDhtmlxGantt() {
     gantt.config.grid_width = 400;
     gantt.config.show_grid = true;
     
-    // Enable milestone support - configure task types
-    gantt.config.types = {
-        task: "task",
-        project: "project",
-        milestone: "milestone"
-    };
-    
-    // CRITICAL: Set type_renderers for proper milestone display
-    gantt.config.type_renderers = gantt.config.type_renderers || {};
-    gantt.config.type_renderers[gantt.config.types.milestone] = function(task) {
-        return gantt.templates.rightside_text(task.start_date, task.end_date, task);
-    };
-    
     // Enable plugins
     gantt.plugins({
         tooltip: true,
         keyboard_navigation: true,
         undo: true,
-        grouping: true,
-        marker: true
+        grouping: true  // Add this line
     });
 
 
@@ -404,14 +390,18 @@ function initDhtmlxGantt() {
     //new
     gantt.templates.task_class = function(start, end, task) {
         var className = "";
-        if (task.type === "milestone") {
-            className += "dhtmlx-milestone ";
+        
+        // Milestone takes priority over other styling
+        if (task.is_milestone) {
+            className += "milestone-block ";
         } else if (task.priority) {
             className += "dhtmlx-priority-" + task.priority + " ";
         }
+        
         if (task.readonly) {
             className += "dhtmlx-readonly ";
         }
+        
         return className;
     };
     
@@ -420,13 +410,26 @@ function initDhtmlxGantt() {
         return "<span>" + Math.round(task.progress * 100) + "% </span>";
     };
     
+    // Task text template - show "M" for milestones
+    gantt.templates.task_text = function(start, end, task) {
+        if (task.is_milestone) {
+            return "M";
+        }
+        return task.text;
+    };
+    
     // Tooltip template
     gantt.templates.tooltip_text = function(start, end, task) {
-        return "<b>Task:</b> " + task.text + "<br/>" +
+        var tooltip = "<b>" + (task.is_milestone ? "Milestone" : "Task") + ":</b> " + task.text + "<br/>" +
                "<b>Start:</b> " + gantt.templates.tooltip_date_format(start) + "<br/>" +
                "<b>End:</b> " + gantt.templates.tooltip_date_format(end) + "<br/>" +
-               "<b>Progress:</b> " + Math.round(task.progress * 100) + "%<br/>" +
-               "<b>Priority:</b> " + (task.priority || 'normal');
+               "<b>Progress:</b> " + Math.round(task.progress * 100) + "%<br/>";
+        
+        if (!task.is_milestone) {
+            tooltip += "<b>Priority:</b> " + (task.priority || 'normal');
+        }
+        
+        return tooltip;
     };
     //new
 
@@ -435,9 +438,9 @@ function initDhtmlxGantt() {
     // new code for lightbox + link to kb
     // Configure lightbox sections to add "View in Kanboard" button
 gantt.config.lightbox.sections = [
-    {name: "type", height: 22, map_to: "type", type: "select", options: [
-        {key: "task", label: "Task"},
-        {key: "milestone", label: "Milestone"}
+    {name: "type", height: 22, map_to: "is_milestone", type: "select", options: [
+        {key: false, label: "Task"},
+        {key: true, label: "Milestone"}
     ]},
     {name: "description", height: 38, map_to: "text", type: "textarea", focus: true},
     {name: "priority", height: 22, map_to: "priority", type: "select", options: [
@@ -450,76 +453,173 @@ gantt.config.lightbox.sections = [
     {name: "kanboard_link", height: 40, type: "template", map_to: "my_template"}
 ];
 
-// Handle milestone duration - when type is milestone, set duration to 0
-gantt.attachEvent("onBeforeLightbox", function(id) {
-    var task = gantt.getTask(id);
-    
-    // If it's a milestone, ensure duration is 0 and end_date equals start_date
-    if (task.type === "milestone") {
-        task.duration = 0;
-        task.end_date = gantt.calculateEndDate(task.start_date, 0);
-    }
-    
-    return true;
-});
-
-// Dynamically change lightbox sections based on task type
-gantt.attachEvent("onBeforeLightbox", function(id) {
-    var task = gantt.getTask(id);
-    
-    // Configure different time sections for milestones vs tasks
-    if (task.type === "milestone") {
-        // For milestones, only show start date (no duration)
-        gantt.config.lightbox.sections = [
-            {name: "type", height: 22, map_to: "type", type: "select", options: [
-                {key: "task", label: "Task"},
-                {key: "milestone", label: "Milestone"}
-            ]},
-            {name: "description", height: 38, map_to: "text", type: "textarea", focus: true},
-            {name: "priority", height: 22, map_to: "priority", type: "select", options: [
-                {key: "low", label: "Low"},
-                {key: "normal", label: "Normal"},
-                {key: "medium", label: "Medium"},
-                {key: "high", label: "High"}
-            ]},
-            {name: "time", type: "time", map_to: "start_date"},
-            {name: "kanboard_link", height: 40, type: "template", map_to: "my_template"}
-        ];
-    } else {
-        // For tasks, show full duration section
-        gantt.config.lightbox.sections = [
-            {name: "type", height: 22, map_to: "type", type: "select", options: [
-                {key: "task", label: "Task"},
-                {key: "milestone", label: "Milestone"}
-            ]},
-            {name: "description", height: 38, map_to: "text", type: "textarea", focus: true},
-            {name: "priority", height: 22, map_to: "priority", type: "select", options: [
-                {key: "low", label: "Low"},
-                {key: "normal", label: "Normal"},
-                {key: "medium", label: "Medium"},
-                {key: "high", label: "High"}
-            ]},
-            {name: "time", type: "duration", map_to: "auto"},
-            {name: "kanboard_link", height: 40, type: "template", map_to: "my_template"}
-        ];
-    }
-    
-    return true;
-});
-
-// When type changes in lightbox, close and reopen to refresh sections
-gantt.attachEvent("onLightboxSave", function(id, task, is_new) {
-    // Ensure milestones have duration 0
-    if (task.type === "milestone") {
-        task.duration = 0;
-        task.end_date = task.start_date;
-    }
-    return true;
-});
-
 // Custom labels for lightbox sections
 gantt.locale.labels.section_type = "Type";
 gantt.locale.labels.section_kanboard_link = "Quick Actions";
+
+// Set default values for new tasks
+gantt.attachEvent("onBeforeLightbox", function(id) {
+    var task = gantt.getTask(id);
+    
+    // Set default priority to "normal" if not already set
+    if (!task.priority) {
+        task.priority = "normal";
+    }
+    
+    // Set default is_milestone to false if not already set
+    if (task.is_milestone === undefined) {
+        task.is_milestone = false;
+    }
+    
+    // Always use type "task" for rendering (rectangular bars)
+    task.type = "task";
+    
+    return true;
+});
+
+// Watch for lightbox to appear and handle milestone field hiding
+var lightboxObserver = new MutationObserver(function(mutations) {
+    mutations.forEach(function(mutation) {
+        mutation.addedNodes.forEach(function(node) {
+            if (node.nodeType === 1 && node.classList && node.classList.contains('gantt_cal_light')) {
+                console.log('Lightbox detected!');
+                
+                setTimeout(function() {
+                    setupLightboxFieldToggle();
+                }, 100);
+            }
+        });
+    });
+});
+
+// Start observing the document for lightbox
+lightboxObserver.observe(document.body, {
+    childList: true,
+    subtree: true
+});
+
+function setupLightboxFieldToggle(retryCount) {
+    retryCount = retryCount || 0;
+    
+    // Try multiple selectors
+    var lightbox = document.querySelector('.gantt_cal_light');
+    
+    if (!lightbox && retryCount < 10) {
+        setTimeout(function() {
+            setupLightboxFieldToggle(retryCount + 1);
+        }, 50);
+        return;
+    }
+    
+    if (!lightbox) {
+        console.log('Lightbox not found after retries');
+        return;
+    }
+    
+    console.log('Lightbox found, looking for type select...');
+    
+    // Debug: log all select elements in the lightbox
+    var allSelects = lightbox.querySelectorAll('select');
+    console.log('All select elements in lightbox:', allSelects.length);
+    allSelects.forEach(function(sel, idx) {
+        console.log('Select ' + idx + ':', sel, 'name:', sel.name, 'id:', sel.id);
+    });
+    
+    // Try different selectors - DHTMLX uses generated ids and empty names
+    // Use title attribute logged in console: title="type" / title="priority"
+    var typeSelect = lightbox.querySelector('select[title="type"]');
+    
+    console.log('Setting up field toggle (attempt ' + (retryCount + 1) + '), type select:', typeSelect);
+    
+    if (!typeSelect) {
+        if (retryCount < 10) {
+            // Retry after 50ms, up to 10 times (500ms total)
+            setTimeout(function() {
+                setupLightboxFieldToggle(retryCount + 1);
+            }, 50);
+        } else {
+            console.log('Type select not found after 10 retries');
+        }
+        return;
+    }
+    
+    console.log('Type select found! Setting up event listeners');
+    
+    // Remove any existing listeners by cloning
+    var newTypeSelect = typeSelect.cloneNode(true);
+    typeSelect.parentNode.replaceChild(newTypeSelect, typeSelect);
+    typeSelect = newTypeSelect;
+    
+    // Function to toggle fields based on type
+    var toggleFields = function() {
+        // Select dropdown value can be string "true"/"false" or boolean
+        var isMilestone = typeSelect.value === 'true' || typeSelect.value === true || typeSelect.value === 'milestone';
+        
+        console.log('Toggling fields, isMilestone:', isMilestone, 'value:', typeSelect.value, 'type:', typeof typeSelect.value);
+        
+        // Scope to the lightbox markup
+        var lightbox = document.querySelector('.gantt_cal_light');
+        if (!lightbox) return;
+
+        // Hide/show Priority section (select with title="priority")
+        var prioritySelect = lightbox.querySelector('select[title="priority"]');
+        if (prioritySelect) {
+            var prContent = prioritySelect.closest('.gantt_cal_ltext') || prioritySelect.parentElement;
+            var prLabel = prContent && prContent.previousElementSibling && prContent.previousElementSibling.classList && prContent.previousElementSibling.classList.contains('gantt_cal_lsection') ? prContent.previousElementSibling : null;
+            if (prContent) prContent.style.display = isMilestone ? 'none' : '';
+            if (prLabel) prLabel.style.display = isMilestone ? 'none' : '';
+            console.log('Priority section hidden:', isMilestone, 'content:', !!prContent, 'label:', !!prLabel);
+        } else {
+            console.log('Priority select not found');
+        }
+
+        // Hide/show only the duration numeric input (keep start date selects visible)
+        var durationCandidates = lightbox.querySelectorAll(
+            '.gantt_time input[type="number"],\
+             .gantt_time input[aria-label="Duration"],\
+             .gantt_time input[id*="duration"],\
+             .gantt_time .gantt_duration input,\
+             .gantt_time .gantt_duration_value'
+        );
+        console.log('Duration numeric inputs found:', durationCandidates.length);
+        durationCandidates.forEach(function(inp){
+            if (inp && inp.style) inp.style.display = isMilestone ? 'none' : '';
+            var wrap = inp.closest('.gantt_duration, .gantt_duration_line, .gantt_time_duration');
+            if (wrap && wrap !== lightbox) wrap.style.display = isMilestone ? 'none' : '';
+        });
+    };
+    
+    // Apply on load
+    toggleFields();
+    
+    // Apply on change
+    typeSelect.addEventListener('change', function() {
+        console.log('Type changed to:', typeSelect.value);
+        toggleFields();
+    });
+}
+
+// Handle milestone save to keep type as task and apply green color
+gantt.attachEvent("onLightboxSave", function(id, task, is_new) {
+    console.log('Lightbox save, task:', task, 'is_milestone:', task.is_milestone, 'type:', typeof task.is_milestone);
+    
+    // Always keep type as "task" for rectangular bars
+    task.type = "task";
+    
+    // Convert is_milestone to boolean (select returns string "true"/"false")
+    if (task.is_milestone === "true" || task.is_milestone === true) {
+        task.is_milestone = true;
+        task.color = "#27ae60";
+        console.log('Set milestone color to green for task:', id);
+    } else {
+        task.is_milestone = false;
+        // Reset color if changed from milestone to task (let server/priority determine color)
+        console.log('Task is not a milestone, keeping original color');
+    }
+    
+    return true;
+});
+
 gantt.form_blocks["template"] = {
     render: function(sns) {
         return "<div class='dhtmlx_cal_ltext' style='height:" + sns.height + "px;'></div>";
@@ -576,52 +676,16 @@ gantt.form_blocks["template"] = {
 function loadGanttData(data) {
     console.log('Loading Gantt data...', data);
     
-    // Process data to ensure milestones have correct properties
     if (data && data.data) {
         console.log('Using data.data format, tasks:', data.data.length);
-        
-        // Debug: Check and fix milestone tasks
-        data.data.forEach(function(task) {
-            console.log('Task:', task.id, 'Type:', task.type, 'Duration:', task.duration);
-            if (task.type === 'milestone') {
-                task.duration = 0;
-                task.end_date = task.start_date;
-                console.log('Fixed milestone task:', task.id);
-            }
-        });
-        
         gantt.parse(data);
     } else if (Array.isArray(data)) {
         console.log('Using array format, tasks:', data.length);
-        
-        // Debug and fix milestones
-        data.forEach(function(task) {
-            console.log('Task:', task.id, 'Type:', task.type, 'Duration:', task.duration);
-            if (task.type === 'milestone') {
-                task.duration = 0;
-                task.end_date = task.start_date;
-                console.log('Fixed milestone task:', task.id);
-            }
-        });
-        
         gantt.parse({data: data, links: []});
     } else {
         console.log('No valid data, creating empty gantt');
         gantt.parse({data: [], links: []});
     }
-    
-    // After parsing, verify all milestones are correct
-    gantt.eachTask(function(task) {
-        if (task.type === 'milestone') {
-            console.log('Milestone in gantt:', task.id, 'Duration:', task.duration, 'Type:', task.type);
-            if (task.duration !== 0) {
-                task.duration = 0;
-                task.end_date = task.start_date;
-                gantt.updateTask(task.id);
-                console.log('Corrected milestone:', task.id);
-            }
-        }
-    });
     
     updateStatistics();
 }
@@ -707,10 +771,72 @@ function setupGanttEventHandlers() {
         console.log('Setting up data processor with URLs:', window.ganttUrls);
         
         // Use simplified event-based approach instead of data processor
+        
+        // Handle new task creation
+        gantt.attachEvent("onAfterTaskAdd", function(id, task) {
+            console.log('New task created, sending to server:', id, task);
+            
+            // Only send to server if this is a real task (not during initial load)
+            if (gantt._loading) {
+                console.log('Skipping task creation during data load');
+                return true;
+            }
+            
+            // Send new task to server
+            fetch(window.ganttUrls.create, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    text: task.text || 'New Task',
+                    start_date: task.start_date,
+                    end_date: task.end_date,
+                    priority: task.priority || 'normal',
+                    is_milestone: task.is_milestone ? 1 : 0
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                console.log('Task creation response:', data);
+                if (data.result === 'ok' && data.id) {
+                    // Update the task with the real ID from server
+                    var oldId = id;
+                    task.id = data.id;
+                    
+                    // Apply green color if milestone
+                    if (task.is_milestone) {
+                        task.color = "#27ae60";
+                        console.log('Applied green color to milestone task:', data.id);
+                    }
+                    
+                    gantt.changeTaskId(oldId, data.id);
+                    gantt.updateTask(data.id);
+                    console.log('Task created successfully with ID:', data.id);
+                } else {
+                    console.error('Failed to create task:', data.message);
+                    gantt.deleteTask(id);
+                }
+            })
+            .catch(error => {
+                console.error('Error creating task:', error);
+                gantt.deleteTask(id);
+            });
+            
+            return true;
+        });
+        
+        // Handle task updates (only for existing tasks)
         gantt.attachEvent("onAfterTaskUpdate", function(id, task) {
             console.log('Task updated, sending to server:', id, task);
             
-            // Send update to server including milestone type
+            // Apply green color if milestone
+            if (task.is_milestone) {
+                task.color = "#27ae60";
+                gantt.refreshTask(id); // Force re-render with new color
+            }
+            
+            // Send update to server including all fields
             fetch(window.ganttUrls.update, {
                 method: 'POST',
                 headers: {
@@ -718,11 +844,11 @@ function setupGanttEventHandlers() {
                 },
                 body: JSON.stringify({
                     id: id,
+                    text: task.text,
                     start_date: task.start_date,
                     end_date: task.end_date,
-                    text: task.text,
-                    type: task.type,
-                    is_milestone: task.type === 'milestone' ? 1 : 0
+                    priority: task.priority,
+                    is_milestone: task.is_milestone ? 1 : 0
                 })
             })
             .then(response => response.json())
@@ -735,6 +861,35 @@ function setupGanttEventHandlers() {
             .catch(error => {
                 console.error('Error saving task:', error);
             });
+        });
+        
+        // Handle task deletion
+        gantt.attachEvent("onBeforeTaskDelete", function(id, task) {
+            console.log('Task deletion requested, sending to server:', id, task);
+            
+            // Send delete request to server
+            fetch(window.ganttUrls.remove, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    id: id
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                console.log('Task deletion response:', data);
+                if (data.result !== 'ok') {
+                    console.error('Failed to delete task:', data.message);
+                }
+            })
+            .catch(error => {
+                console.error('Error deleting task:', error);
+            });
+            
+            // Return true to allow the deletion in the UI
+            return true;
         });
 
         // Handle dependency creation when user draws arrows in Gantt
@@ -850,23 +1005,23 @@ function setupGanttEventHandlers() {
 
 
     // Enhanced zoom handlers
-var zoomInBtn = document.getElementById('dhtmlx-zoom-in');
-if (zoomInBtn) {
-    zoomInBtn.addEventListener('click', function() {
+    var zoomInBtn = document.getElementById('dhtmlx-zoom-in');
+    if (zoomInBtn) {
+        zoomInBtn.addEventListener('click', function() {
         smartZoom('in');
-    });
-}
-
-var zoomOutBtn = document.getElementById('dhtmlx-zoom-out');
-if (zoomOutBtn) {
-    zoomOutBtn.addEventListener('click', function() {
+        });
+    }
+    
+    var zoomOutBtn = document.getElementById('dhtmlx-zoom-out');
+    if (zoomOutBtn) {
+        zoomOutBtn.addEventListener('click', function() {
         smartZoom('out');
-    });
-}
-
-var fitBtn = document.getElementById('dhtmlx-fit');
-if (fitBtn) {
-    fitBtn.addEventListener('click', function() {
+        });
+    }
+    
+    var fitBtn = document.getElementById('dhtmlx-fit');
+    if (fitBtn) {
+        fitBtn.addEventListener('click', function() {
         smartFitToScreen();
     });
 }
@@ -928,15 +1083,7 @@ if (groupByAssigneeBtn) {
         console.log('Task statistics update for:', id, task);
         updateStatistics();
     });
-    gantt.attachEvent("onAfterTaskAdd", function(id, task) {
-        // Ensure milestones have proper settings
-        if (task.type === "milestone") {
-            task.duration = 0;
-            task.end_date = task.start_date;
-            gantt.updateTask(id);
-        }
-        updateStatistics();
-    });
+    gantt.attachEvent("onAfterTaskAdd", updateStatistics);
     gantt.attachEvent("onAfterTaskDelete", updateStatistics);
 
 

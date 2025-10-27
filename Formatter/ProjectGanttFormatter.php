@@ -63,6 +63,9 @@ class ProjectGanttFormatter extends Base
         $metadata = $this->taskMetadataModel->getAll($task['id']);
         $isMilestone = !empty($metadata['is_milestone']) && $metadata['is_milestone'] === '1';
         
+        // Override color for milestones to green
+        $color = $isMilestone ? '#27ae60' : $this->getTaskColor($task);
+        
         return array(
             'id' => $task['id'],
             'text' => $task['title'],
@@ -70,13 +73,14 @@ class ProjectGanttFormatter extends Base
             'duration' => $duration,
             'progress' => $this->calculateProgress($task),
             'priority' => $this->mapPriority($task['priority']),
-            'color' => $this->getTaskColor($task),
+            'color' => $color,
             'owner_id' => $task['owner_id'],
             'assignee' => $assignee,
             'category_id' => $task['category_id'],
             'swimlane_id' => $task['swimlane_id'],
             'column_id' => $task['column_id'],
-            'type' => $isMilestone ? 'milestone' : 'task',
+            'type' => 'task', // Always use 'task' type to show as rectangular bar
+            'is_milestone' => $isMilestone,
             'open' => true,
             'readonly' => $this->isReadonly($task),
         );

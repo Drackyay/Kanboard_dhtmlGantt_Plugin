@@ -73,11 +73,11 @@
      style="width: 100%; height: 600px;"
      data-tasks='<?= htmlspecialchars(json_encode($tasks), ENT_QUOTES, 'UTF-8') ?>'
      data-project-id="<?= $project['id'] ?>"
-     data-update-url="<?= $this->url->to('TaskGanttController', 'save', array('project_id' => $project['id']), false, '', 'DhtmlGantt') ?>"
-     data-create-url="<?= $this->url->to('TaskGanttController', 'create', array('project_id' => $project['id']), false, '', 'DhtmlGantt') ?>"
-     data-remove-url="<?= $this->url->to('TaskGanttController', 'remove', array('project_id' => $project['id']), false, '', 'DhtmlGantt') ?>"
-     data-create-link-url="<?= $this->url->to('TaskGanttController', 'dependency', array('project_id' => $project['id']), false, '', 'DhtmlGantt') ?>"
-     data-remove-link-url="<?= $this->url->to('TaskGanttController', 'removeDependency', array('project_id' => $project['id']), false, '', 'DhtmlGantt') ?>">
+     data-update-url="<?= $this->url->href('TaskGanttController', 'save', array('project_id' => $project['id'], 'plugin' => 'DhtmlGantt')) ?>"
+     data-create-url="<?= $this->url->href('TaskGanttController', 'create', array('project_id' => $project['id'], 'plugin' => 'DhtmlGantt')) ?>"
+     data-remove-url="<?= $this->url->href('TaskGanttController', 'remove', array('project_id' => $project['id'], 'plugin' => 'DhtmlGantt')) ?>"
+     data-create-link-url="<?= $this->url->href('TaskGanttController', 'dependency', array('project_id' => $project['id'], 'plugin' => 'DhtmlGantt')) ?>"
+     data-remove-link-url="<?= $this->url->href('TaskGanttController', 'removeDependency', array('project_id' => $project['id'], 'plugin' => 'DhtmlGantt')) ?>">
 </div>
             
             <!-- Task Information Panel -->
@@ -142,7 +142,7 @@
                             <span><?= t('High Priority') ?></span>
                         </div>
                         <div class="dhtmlx-legend-item">
-                            <span class="dhtmlx-legend-milestone"></span>
+                            <span class="dhtmlx-legend-color" style="background: #27ae60;"></span>
                             <span><?= t('Milestone') ?></span>
                         </div>
                     </div>

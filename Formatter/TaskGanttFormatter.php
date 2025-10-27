@@ -87,6 +87,9 @@ class TaskGanttFormatter extends BaseFormatter implements FormatterInterface
         $metadata = $this->taskMetadataModel->getAll($task['id']);
         $isMilestone = !empty($metadata['is_milestone']) && $metadata['is_milestone'] === '1';
         
+        // Override color for milestones to green
+        $color = $isMilestone ? '#27ae60' : $this->getTaskColor($task);
+        
         return array(
             'id' => $task['id'],
             'text' => $task['title'],
@@ -95,7 +98,7 @@ class TaskGanttFormatter extends BaseFormatter implements FormatterInterface
             'duration' => $this->calculateDuration($start, $end),
             'progress' => $this->calculateProgress($task),
             'priority' => $this->mapPriority($task['priority']),
-            'color' => $this->getTaskColor($task),
+            'color' => $color,
             'owner_id' => $task['owner_id'],
             'assignee' => $task['assignee_name'] ?: $task['assignee_username'],
             'column_title' => $task['column_name'],
@@ -105,7 +108,8 @@ class TaskGanttFormatter extends BaseFormatter implements FormatterInterface
                 'task_id' => $task['id']
             )),
             'readonly' => $this->isReadonly($task),
-            'type' => $isMilestone ? 'milestone' : 'task',
+            'type' => 'task', // Always use 'task' type to show as rectangular bar
+            'is_milestone' => $isMilestone,
             'open' => true,
         );
     }

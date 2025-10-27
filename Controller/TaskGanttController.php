@@ -61,75 +61,77 @@ class TaskGanttController extends BaseController
     }
 
     /**
-     * Save new task start date and due date
+     * Save task updates (title, dates, priority, etc.)
      */
     public function save()
     {
-        try {
-            $this->getProject();
-            $changes = $this->request->getJson();
-            $values = [];
+        $this->getProject();
+        $changes = $this->request->getJson();
+        $values = [];
+        
+        // Debug logging
+        error_log('DHtmlX Gantt Save - Received data: ' . json_encode($changes));
+
+        $task_id = (int) $changes['id'];
+        $values['id'] = $task_id;
+
+        // Update title/description
+        if (! empty($changes['text'])) {
+            $values['title'] = $changes['text'];
+        }
+
+        // Update start date
+        if (! empty($changes['start_date'])) {
+            $startTime = strtotime($changes['start_date']);
+            if ($startTime !== false) {
+                $values['date_started'] = $startTime;
+            }
+        }
+
+        // Update end/due date
+        if (! empty($changes['end_date'])) {
+            $endTime = strtotime($changes['end_date']);
+            if ($endTime !== false) {
+                $values['date_due'] = $endTime;
+            }
+        }
+
+        // Update priority
+        if (isset($changes['priority'])) {
+            $priorityMap = array(
+                'low' => 1,
+                'normal' => 0,
+                'medium' => 2,
+                'high' => 3
+            );
+            if (isset($priorityMap[$changes['priority']])) {
+                $values['priority'] = $priorityMap[$changes['priority']];
+            }
+        }
+        
+        // Handle milestone status
+        if (isset($changes['is_milestone'])) {
+            $isMilestone = $changes['is_milestone'] ? '1' : '0';
+            error_log('DHtmlX Gantt Save - Setting milestone status to: ' . $isMilestone);
+            $this->taskMetadataModel->save($task_id, array('is_milestone' => $isMilestone));
+        }
+
+        // Always try to update if we have values (at minimum we have the ID)
+        if (count($values) > 1) {
+            error_log('DHtmlX Gantt Save - Updating task ' . $task_id . ' with values: ' . json_encode($values));
             
-            // Debug logging
-            error_log('DHtmlX Gantt Save - Received data: ' . json_encode($changes));
+            $result = $this->taskModificationModel->update($values);
 
-            if (! empty($changes['start_date'])) {
-                $startTime = strtotime($changes['start_date']);
-                if ($startTime !== false) {
-                    $values['date_started'] = $startTime;
-                }
-            }
-
-            if (! empty($changes['end_date'])) {
-                $endTime = strtotime($changes['end_date']);
-                if ($endTime !== false) {
-                    $values['date_due'] = $endTime;
-                }
-            }
-
-            $task_id = (int) $changes['id'];
-            
-            // Verify task exists
-            $task = $this->taskFinderModel->getById($task_id);
-            if (!$task) {
-                error_log('DHtmlX Gantt Save - Task not found: ' . $task_id);
-                $this->response->json(array('result' => 'error', 'message' => 'Task not found'), 404);
-                return;
-            }
-            
-            // Handle milestone status
-            if (isset($changes['is_milestone'])) {
-                try {
-                    $isMilestone = $changes['is_milestone'] ? '1' : '0';
-                    error_log('DHtmlX Gantt Save - Setting milestone status to: ' . $isMilestone);
-                    $this->taskMetadataModel->save($task_id, array('is_milestone' => $isMilestone));
-                } catch (\Exception $e) {
-                    error_log('DHtmlX Gantt Save - Error saving milestone metadata: ' . $e->getMessage());
-                }
-            }
-
-            if (! empty($values)) {
-                $values['id'] = $task_id;
-                
-                error_log('DHtmlX Gantt Save - Updating task ' . $task_id . ' with values: ' . json_encode($values));
-                
-                $result = $this->taskModificationModel->update($values);
-
-                if (! $result) {
-                    error_log('DHtmlX Gantt Save - Failed to update task ' . $task_id);
-                    $this->response->json(array('result' => 'error', 'message' => 'Unable to save task'), 400);
-                } else {
-                    error_log('DHtmlX Gantt Save - Successfully updated task ' . $task_id);
-                    $this->response->json(array('result' => 'ok', 'message' => 'Task updated successfully'), 200);
-                }
+            if (! $result) {
+                error_log('DHtmlX Gantt Save - Failed to update task ' . $task_id);
+                $this->response->json(array('result' => 'error', 'message' => 'Unable to save task'), 400);
             } else {
-                error_log('DHtmlX Gantt Save - No date changes, but milestone might have been updated');
+                error_log('DHtmlX Gantt Save - Successfully updated task ' . $task_id);
                 $this->response->json(array('result' => 'ok', 'message' => 'Task updated successfully'), 200);
             }
-        } catch (\Exception $e) {
-            error_log('DHtmlX Gantt Save - Fatal error: ' . $e->getMessage());
-            error_log('Stack trace: ' . $e->getTraceAsString());
-            $this->response->json(array('result' => 'error', 'message' => 'Server error: ' . $e->getMessage()), 500);
+        } else {
+            error_log('DHtmlX Gantt Save - No changes to save');
+            $this->response->json(array('result' => 'ok', 'message' => 'No changes'), 200);
         }
     }
 
@@ -140,22 +142,49 @@ class TaskGanttController extends BaseController
     {
         $project = $this->getProject();
         $data = $this->request->getJson();
+        
+        // Debug logging
+        error_log('DHtmlX Gantt Create - Received data: ' . json_encode($data));
+
+        // Map priority from string to integer
+        $priority = 0; // default to normal
+        if (isset($data['priority'])) {
+            $priorityMap = array(
+                'low' => 1,
+                'normal' => 0,
+                'medium' => 2,
+                'high' => 3
+            );
+            if (isset($priorityMap[$data['priority']])) {
+                $priority = $priorityMap[$data['priority']];
+            }
+        }
 
         $task_id = $this->taskCreationModel->create(array(
             'project_id' => $project['id'],
             'title' => $data['text'] ?? 'New Task',
             'date_started' => !empty($data['start_date']) ? strtotime($data['start_date']) : null,
             'date_due' => !empty($data['end_date']) ? strtotime($data['end_date']) : null,
+            'priority' => $priority,
             'creator_id' => $this->userSession->getId(),
         ));
 
         if ($task_id) {
+            // Save milestone status if provided
+            if (isset($data['is_milestone'])) {
+                $isMilestone = $data['is_milestone'] ? '1' : '0';
+                error_log('DHtmlX Gantt Create - Setting milestone status to: ' . $isMilestone . ' for task: ' . $task_id);
+                $this->taskMetadataModel->save($task_id, array('is_milestone' => $isMilestone));
+            }
+            
+            error_log('DHtmlX Gantt Create - Task created successfully with ID: ' . $task_id);
             $this->response->json(array(
                 'result' => 'ok',
                 'id' => $task_id,
                 'message' => 'Task created successfully'
             ), 201);
         } else {
+            error_log('DHtmlX Gantt Create - Failed to create task');
             $this->response->json(array(
                 'result' => 'error',
                 'message' => 'Unable to create task'
@@ -169,14 +198,21 @@ class TaskGanttController extends BaseController
     public function remove()
     {
         $project = $this->getProject();
-        $task_id = (int) $this->request->getStringParam('id');
+        $data = $this->request->getJson();
+        $task_id = (int) ($data['id'] ?? 0);
+        
+        // Debug logging
+        error_log('DHtmlX Gantt Remove - Received data: ' . json_encode($data));
+        error_log('DHtmlX Gantt Remove - Task ID: ' . $task_id);
 
         if ($task_id && $this->taskModel->remove($task_id)) {
+            error_log('DHtmlX Gantt Remove - Task deleted successfully: ' . $task_id);
             $this->response->json(array(
                 'result' => 'ok',
                 'message' => 'Task deleted successfully'
             ), 200);
         } else {
+            error_log('DHtmlX Gantt Remove - Failed to delete task: ' . $task_id);
             $this->response->json(array(
                 'result' => 'error',
                 'message' => 'Unable to delete task'
