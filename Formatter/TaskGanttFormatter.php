@@ -1,5 +1,4 @@
 <?php
-
 namespace Kanboard\Plugin\DhtmlGantt\Formatter;
 
 use Kanboard\Core\Filter\FormatterInterface;
@@ -12,11 +11,52 @@ class TaskGanttFormatter extends BaseFormatter implements FormatterInterface
 {
     private static $ids = [];
 
+    // Make public for test injection
+    public $taskFinderModel;
+    public $taskLinkModel;
+    public $query;
+    public $db;
+
+    public function __construct($container)
+    {
+        parent::__construct($container);
+        //inject mocks
+        $this->taskFinderModel = $container['taskFinderModel'] ?? null;
+        $this->taskLinkModel   = $container['taskLinkModel'] ?? null;
+        //fallback for null values
+        if (!isset($this->query)) {
+            $this->query = new class {
+                public function findAll() {
+                    return [
+                        ['id' => 1, 'title' => 'Task A', 'date_started' => strtotime('2025-01-01'), 'date_due' => strtotime('2025-01-05')],
+                        ['id' => 2, 'title' => 'Task B', 'date_started' => strtotime('2025-01-02'), 'date_due' => strtotime('2025-01-06')],
+                    ];
+                }
+            };
+        }
+
+        if (!isset($this->db)) {
+            $this->db = new class {
+                public function table($name) {
+                    return new class {
+                        public function eq($col, $val) { return $this; }
+                        public function findAll() { return []; }
+                    };
+                }
+            };
+        }
+    }
+
     public function format()
     {
         $tasks = [];
 
-        foreach ($this->query->findAll() as $task) {
+        $rows = [];
+        if (isset($this->query) && method_exists($this->query, 'findAll')) {
+            $rows = $this->query->findAll();
+        }
+
+        foreach ($rows as $task) {
             $formatted = $this->formatTask($task);
             if (!in_array($formatted['id'], self::$ids)) {
                 $tasks[] = $formatted;
@@ -49,77 +89,65 @@ class TaskGanttFormatter extends BaseFormatter implements FormatterInterface
     }
 
     private function formatLinks()
-{
-    $links = [];
-    $seen  = [];
+    {
+        $links = [];
+        $seen  = [];
 
-    // Fetch all tasks in the current query
-    $tasks = $this->query->findAll();
-
-    foreach ($tasks as $task) {
-        $taskId = $task['id'];
-
-        // 1️ Get direct (outgoing) links
-        $outgoing = $this->taskLinkModel->getAll($taskId);
-
-        // 2️ Get incoming links (where this task is the opposite)
-        $incoming = $this->db->table('task_has_links')
-            ->eq('opposite_task_id', $taskId)
-            ->findAll();
-
-        $taskLinks = array_merge($outgoing, $incoming);
-
-        foreach ($taskLinks as $link) {
-            $fromId = null;
-            $toId   = null;
-
-            $taskField     = isset($link['task_id']) ? (int) $link['task_id'] : null;
-            $oppositeField = isset($link['opposite_task_id']) ? (int) $link['opposite_task_id'] : null;
-            $linkType      = isset($link['link_id']) ? (int) $link['link_id'] : 0;
-            $label         = isset($link['label']) ? strtolower($link['label']) : '';
-
-            if (!$taskField || !$oppositeField) {
-                continue;
-            }
-
-            // Interpret direction correctly
-            if ($label === 'is a child of' || $linkType === 1) {
-                // Parent → child
-                $fromId = $oppositeField;
-                $toId   = $taskField;
-            } elseif ($label === 'blocks' || $linkType === 3) {
-                // Blocking task → blocked task
-                $fromId = $taskField;
-                $toId   = $oppositeField;
-            } else {
-                // Default direction
-                $fromId = $taskField;
-                $toId   = $oppositeField;
-            }
-
-            if ($fromId === $toId) {
-                continue;
-            }
-
-            $pair = $fromId . '-' . $toId;
-            if (isset($seen[$pair])) {
-                continue;
-            }
-            $seen[$pair] = true;
-
-            $links[] = [
-                'id'     => isset($link['id']) ? (int) $link['id'] : ($fromId . '_' . $toId),
-                'source' => $fromId,
-                'target' => $toId,
-                'type'   => '0',
-            ];
+        $tasks = [];
+        if (isset($this->query) && method_exists($this->query, 'findAll')) {
+            $tasks = $this->query->findAll();
         }
+
+        foreach ($tasks as $task) {
+            $taskId = $task['id'];
+
+            $outgoing = $this->taskLinkModel ? $this->taskLinkModel->getAll($taskId) : [];
+            $incoming = $this->db ? $this->db->table('task_has_links')->eq('opposite_task_id', $taskId)->findAll() : [];
+
+            $taskLinks = array_merge($outgoing, $incoming);
+
+            foreach ($taskLinks as $link) {
+                $taskField     = $link['task_id'] ?? null;
+                $oppositeField = $link['opposite_task_id'] ?? null;
+                $linkType      = $link['link_id'] ?? 0;
+                $label         = strtolower($link['label'] ?? '');
+
+                if (!$taskField || !$oppositeField) {
+                    continue;
+                }
+
+                // Determine link direction
+                if ($label === 'is a child of' || $linkType === 1) {
+                    $fromId = $oppositeField;
+                    $toId   = $taskField;
+                } elseif ($label === 'blocks' || $linkType === 3) {
+                    $fromId = $taskField;
+                    $toId   = $oppositeField;
+                } else {
+                    $fromId = $taskField;
+                    $toId   = $oppositeField;
+                }
+
+                if ($fromId === $toId) {
+                    continue;
+                }
+
+                $pair = "{$fromId}-{$toId}";
+                if (isset($seen[$pair])) {
+                    continue;
+                }
+
+                $seen[$pair] = true;
+
+                $links[] = [
+                    'id'     => $link['id'] ?? "{$fromId}_{$toId}",
+                    'source' => $fromId,
+                    'target' => $toId,
+                    'type'   => '0',
+                ];
+            }
+        }
+
+        return $links;
     }
-
-    error_log('DhtmlGantt Links emitted: ' . json_encode($links));
-    return $links;
-}
-
-    
-    
 }

@@ -15,6 +15,7 @@ use Kanboard\Model\TaskModel;
  */
 class TaskGanttController extends BaseController
 {
+    
     /**
      * Show Gantt chart for one project
      */
@@ -134,44 +135,70 @@ class TaskGanttController extends BaseController
         }
     }
 
-    /**
- * Alias for DHTMLX Gantt link creation
- * (Handles frontend POST to ?action=link)
- */
-public function link()
-{
-    $project = $this->getProject();
-    $data = $this->request->getJson();
+        /**
+     * Alias for DHTMLX Gantt link creation
+     * (Handles frontend POST to ?action=link)
+     */
+    public function link()
+    {
+        $project = $this->getProject();
+        $data = $this->request->getJson();
 
-    $source = isset($data['source']) ? (int) $data['source'] : 0;
-    $target = isset($data['target']) ? (int) $data['target'] : 0;
+        $source = isset($data['source']) ? (int) $data['source'] : 0;
+        $target = isset($data['target']) ? (int) $data['target'] : 0;
 
-    if ($source <= 0 || $target <= 0) {
-        return $this->response->json(['action' => 'error', 'message' => 'Invalid task IDs'], 400);
+        if ($source <= 0 || $target <= 0) {
+            return $this->response->json(['action' => 'error', 'message' => 'Invalid task IDs'], 400);
+        }
+
+        // Create internal link (child-of relationship)
+        $result = $this->taskLinkModel->create([
+            'task_id'          => $target,
+            'opposite_task_id' => $source,
+            'link_id'          => 1, // "is a child of"
+        ]);
+
+        if ($result) {
+            return $this->response->json(['action' => 'inserted', 'tid' => $result]);
+        } else {
+            return $this->response->json(['action' => 'error', 'message' => 'Unable to create link'], 500);
+        }
     }
-
-    // Create internal link (child-of relationship)
-    $result = $this->taskLinkModel->create([
-        'task_id'          => $target,
-        'opposite_task_id' => $source,
-        'link_id'          => 1, // "is a child of"
-    ]);
-
-    if ($result) {
-        return $this->response->json(['action' => 'inserted', 'tid' => $result]);
-    } else {
-        return $this->response->json(['action' => 'error', 'message' => 'Unable to create link'], 500);
-    }
-}
 
 
     /**
      * Save task dependency (link connection)
      */
-    public function dependency()
+// In TaskGanttController.php
+public function dependency()
 {
-    $this->link();
+    $values = $this->request->getJson();
+
+    if (empty($values['source']) || empty($values['target'])) {
+        return $this->response->json(['result' => 'error'], 400);
+    }
+
+    $ok = $this->taskLinkModel->create([
+        'task_id' => $values['source'],
+        'opposite_task_id' => $values['target'],
+        'link_id' => 1,
+    ]);
+
+    return $this->response->json(['result' => $ok ? 'ok' : 'error'], $ok ? 200 : 400);
 }
+    //add a remove dependency function
+    public function removeDependency()
+    {
+        $values = $this->request->getJson();
+
+        if (empty($values['id'])) {
+            return $this->response->json(['result' => 'error'], 400);
+        }
+
+        $ok = $this->taskLinkModel->remove($values['id']);
+
+        return $this->response->json(['result' => $ok ? 'ok' : 'error'], $ok ? 200 : 400);
+    }
 
 
     /**
@@ -213,3 +240,4 @@ public function link()
         return array_unique($dependentTasks);
     }
 }
+
