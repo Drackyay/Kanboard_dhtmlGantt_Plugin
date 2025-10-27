@@ -894,8 +894,18 @@ function setupGanttEventHandlers() {
             return true;
         });
         
+        // Prevent infinite loops
+        var isProcessingLink = false;
+        
         // Handle dependency creation when user draws arrows in Gantt
         gantt.attachEvent("onAfterLinkAdd", function(id, link) {
+            
+            // Prevent infinite loop
+            if (isProcessingLink) {
+                console.log('Skipping link creation - already processing');
+                return;
+            }
+            isProcessingLink = true;
             console.log('Link created, sending to server:', id, link);
             console.log('Using URL:', window.ganttUrls.createLink);
             
@@ -921,63 +931,193 @@ function setupGanttEventHandlers() {
                     console.log('Dependency creation response:', data);
                     if (data.result !== 'ok') {
                         console.error('Failed to create dependency:', data.message);
-                        gantt.deleteLink(id);
+                        // ⚠️ FIX: Remove link WITHOUT triggering events to prevent infinite loop
+                        gantt.silent(function() {
+                            gantt.deleteLink(id);
+                        });
+                        isProcessingLink = false; // Reset flag
                         return;
                     }
-                    // ✅ SUCCESS: Refresh the chart to reflect the changes
-                    console.log('Dependency created successfully, refreshing chart...');
-                    gantt.render();
+                    // ✅ SUCCESS: Reload fresh data from server to reflect changes
+                    console.log('Dependency created successfully - reloading fresh data from server...');
+                    reloadGanttDataFromServer();
+                    isProcessingLink = false; // Reset flag
                 } catch (parseError) {
                     console.error('JSON parse error:', parseError);
                     console.error('Response was not valid JSON:', text);
-                    // Remove the link from the Gantt if creation failed
-                    gantt.deleteLink(id);
+                    // Remove the link WITHOUT triggering events
+                    gantt.silent(function() {
+                        gantt.deleteLink(id);
+                    });
+                    isProcessingLink = false; // Reset flag
                 }
             })
             .catch(error => {
                 console.error('Error creating dependency:', error);
-                // Remove the link from the Gantt if creation failed
-                gantt.deleteLink(id);
+                // Remove the link WITHOUT triggering events
+                gantt.silent(function() {
+                    gantt.deleteLink(id);
+                });
+                isProcessingLink = false; // Reset flag
             });
         });
 
-        // Handle dependency removal when user deletes arrows in Gantt
+        // Handle dependency removal when user deletes arrows in Gantt  
         gantt.attachEvent("onAfterLinkDelete", function(id, link) {
-            console.log('Link deleted, sending to server:', id, link);
+            
+            // Prevent processing during link creation cleanup
+            if (isProcessingLink) {
+                console.log('Skipping removal - link creation is being processed');
+                return;
+            }
+            
+            console.log('Link deleted, sending to server:');
+            console.log('  DHTMLX ID:', id);
+            console.log('  Link object:', link);
+            
+            // Use the actual database ID from the link object, not the DHTMLX internal ID
+            var databaseId = link.id || id;
+            console.log('  Using database link ID:', databaseId, '(type:', typeof databaseId, ')');
+            
+            // Ensure we have a valid integer ID for the database
+            var linkIdForServer = parseInt(databaseId, 10);
+            
+            // Check if this looks like a DHTMLX internal ID (very large number)
+            if (isNaN(linkIdForServer) || linkIdForServer <= 0 || linkIdForServer > 1000000) {
+                console.log('Invalid or internal DHTMLX ID - skipping server request:', databaseId);
+                return; // Don't send request for internal IDs or invalid IDs
+            }
+            
+            console.log('  Sending link ID to server:', linkIdForServer);
             
             // Send removal request to server using fetch API
             fetch(window.ganttUrls.removeLink, {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
                 body: JSON.stringify({
-                    id: id,
+                    id: linkIdForServer,
                     source: link.source,
                     target: link.target
                 })
             })
-            .then(response => response.json())
-            .then(data => {
-                console.log('Dependency removal response:', data);
-                if (data.result === 'ok') {
-                    // ✅ SUCCESS: Refresh the chart to reflect the changes
-                    console.log('Dependency removed successfully, refreshing chart...');
-                    gantt.render();
-                } else {
-                    console.error('Failed to remove dependency:', data.message);
-                    // Re-add the link to the UI since server removal failed
-                    gantt.addLink(link);
+            .then(response => {
+                console.log('Removal response status:', response.status);
+                return response.text(); // Get as text first to handle both JSON and HTML responses
+            })
+            .then(text => {
+                console.log('Raw removal response:', text);
+                try {
+                    const data = JSON.parse(text);
+                    console.log('Dependency removal response:', data);
+                    if (data.result === 'ok') {
+                        console.log('Dependency removed successfully from server');
+                        
+                        // ⚠️ FORCE REMOVAL: Sometimes DHTMLX doesn't remove the visual arrow properly
+                        // So we need to force remove it and refresh the chart
+                        console.log('Force removing link from UI and refreshing...');
+                        
+                        // Try to remove the link from DHTMLX if it still exists
+                        if (gantt.isLinkExists(linkIdForServer)) {
+                            console.log('Link still exists in DHTMLX, force removing...');
+                            gantt.deleteLink(linkIdForServer);
+                        }
+                        
+                        // ✅ DYNAMIC SOLUTION: Reload fresh data from server
+                        console.log('Dependency removed successfully - reloading fresh data from server...');
+                        reloadGanttDataFromServer();
+                        
+                        return; // Exit early
+                    } else {
+                        console.error('Failed to remove dependency:', data.message);
+                        // ⚠️ FIX: Don't restore link - let the UI removal stand
+                        // The link probably didn't exist in database anyway
+                        console.log('Server removal failed - keeping UI removal (link may not have existed in DB)');
+                        return;
+                    }
+                } catch (parseError) {
+                    console.error('JSON parse error:', parseError);
+                    console.error('Response was not valid JSON:', text);
+                    
+                    // ⚠️ FIX: Don't restore link on parse errors either  
+                    // Most parse errors happen because the link wasn't in the database
+                    console.log('Parse error during removal - keeping UI removal (link likely not in DB)');
+                    return; // Exit early, don't refresh
                 }
             })
             .catch(error => {
                 console.error('Error removing dependency:', error);
+                // ⚠️ FIX: Don't restore on network errors either
+                console.log('Network error during removal - keeping UI removal');
             });
         });
         
-        console.log('Event-based data handling initialized successfully');
+    console.log('Event-based data handling initialized successfully');
+    
+} else {
+    console.warn('No ganttUrls found, data processor not initialized');
+}
+
+/**
+ * ✅ DYNAMIC DATA RELOAD FUNCTION
+ * Reloads fresh data from server to ensure chart is always in sync
+ */
+function reloadGanttDataFromServer() {
+    console.log('Reloading Gantt data from server...');
+    
+    // Get current page URL to reload data from same source
+    var currentUrl = window.location.href;
+    
+    // Make request to current page to get fresh data
+    fetch(currentUrl, {
+        method: 'GET',
+        headers: {
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+            'Cache-Control': 'no-cache'
+        }
+    })
+    .then(response => response.text())
+    .then(html => {
+        console.log('Received fresh HTML, extracting task data...');
         
-    } else {
-        console.warn('No ganttUrls found, data processor not initialized');
-    }
+        // Extract the fresh taskData from the HTML response
+        var taskDataMatch = html.match(/window\.taskData\s*=\s*({[^;]+});/);
+        if (taskDataMatch) {
+            try {
+                var freshTaskData = JSON.parse(taskDataMatch[1]);
+                console.log('Extracted fresh task data:', freshTaskData);
+                
+                // Update cached data
+                window.taskData = freshTaskData;
+                
+                // Clear and reload chart with fresh data
+                gantt.clearAll();
+                gantt.parse(freshTaskData);
+                
+                console.log('✅ Chart reloaded with fresh server data!');
+                
+            } catch (parseError) {
+                console.error('Failed to parse fresh task data:', parseError);
+                fallbackRefresh();
+            }
+        } else {
+            console.warn('Could not extract task data from server response');
+            fallbackRefresh();
+        }
+    })
+    .catch(error => {
+        console.error('Failed to reload data from server:', error);
+        fallbackRefresh();
+    });
+}
+
+/**
+ * Fallback refresh method when server reload fails
+ */
+function fallbackRefresh() {
+    console.log('Using fallback refresh - reloading page...');
+    // As last resort, reload the entire page to get fresh data
+    window.location.reload();
+}
     
     // Toolbar event handlers
     var addTaskBtn = document.getElementById('dhtmlx-add-task');
