@@ -476,22 +476,30 @@ gantt.locale.labels.section_kanboard_link = "Quick Actions";
 // Set default values for new tasks
 gantt.attachEvent("onBeforeLightbox", function(id) {
     var task = gantt.getTask(id);
+    console.log('onBeforeLightbox for task:', id, 'is_milestone:', task.is_milestone, 'type:', typeof task.is_milestone);
     
     // Set default priority to "normal" if not already set
     if (!task.priority) {
         task.priority = "normal";
     }
     
-    // Set default is_milestone to false if not already set
-    if (task.is_milestone === undefined) {
-        task.is_milestone = false;
-    }
-    
     // Always use type "task" for rendering (rectangular bars)
     task.type = "task";
     
+    // Ensure is_milestone is properly set (convert 1/0 or "1"/"0" to boolean)
+    if (task.is_milestone === 1 || task.is_milestone === "1" || task.is_milestone === true) {
+        task.is_milestone = true;
+    } else if (task.is_milestone === undefined || task.is_milestone === null) {
+        task.is_milestone = false;
+    }
+    
+    console.log('After processing, is_milestone:', task.is_milestone);
+    
     return true;
 });
+
+// Note: onAfterLightbox removed - setting the value in setupLightboxFieldToggle instead
+// This avoids conflicts with the main initialization logic
 
 // Watch for lightbox to appear and handle milestone field hiding
 var lightboxObserver = new MutationObserver(function(mutations) {
@@ -561,8 +569,29 @@ function setupLightboxFieldToggle(retryCount) {
     
     console.log('Type select found! Setting up event listeners');
     
+    // Try to get the task being edited to set the initial value
+    var taskId = gantt.getSelectedId();
+    var shouldBeMilestone = false;
+    if (taskId) {
+        var task = gantt.getTask(taskId);
+        if (task && task.is_milestone) {
+            shouldBeMilestone = true;
+            console.log('Task is a milestone, will set to true after cloning');
+        }
+    }
+    
     // Remove any existing listeners by cloning
     var newTypeSelect = typeSelect.cloneNode(true);
+    
+    // Set the value on the CLONED element
+    if (shouldBeMilestone) {
+        newTypeSelect.value = 'true';
+        console.log('Set NEW type select to true (Milestone) for task:', taskId);
+    } else {
+        newTypeSelect.value = 'false';
+        console.log('Set NEW type select to false (Task) for task:', taskId);
+    }
+    
     typeSelect.parentNode.replaceChild(newTypeSelect, typeSelect);
     typeSelect = newTypeSelect;
     
@@ -622,8 +651,9 @@ gantt.attachEvent("onLightboxSave", function(id, task, is_new) {
     // Always keep type as "task" for rectangular bars
     task.type = "task";
     
-    // Convert is_milestone to boolean (select returns string "true"/"false")
-    if (task.is_milestone === "true" || task.is_milestone === true) {
+    // Convert is_milestone to proper boolean/string format
+    // DHtmlX select returns the key value (true/false as boolean, or "true"/"false" as string)
+    if (task.is_milestone === true || task.is_milestone === "true" || task.is_milestone === 1 || task.is_milestone === "1") {
         task.is_milestone = true;
         task.color = "#27ae60";
         console.log('Set milestone color to green for task:', id);
