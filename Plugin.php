@@ -22,7 +22,13 @@ class Plugin extends Base
         // New routes for the dedicated Project Gantt page + data endpoint
         $this->route->addRoute('project/:project_id/gantt', 'ProjectGanttController', 'show', 'DhtmlGantt');
         $this->route->addRoute('project/:project_id/gantt/data', 'ProjectGanttController', 'tasks', 'DhtmlGantt');
-
+        $this->route->addRoute(
+            '/project/:project_id/move_dependencies/:enabled',
+            'TaskGanttController',
+            'saveMoveDependenciesSetting',
+            'DhtmlGantt'
+        );
+        
         // Task Gantt API routes for task operations and dependency management
         $this->route->addRoute('dhtmlgantt/:project_id/save', 'TaskGanttController', 'save', 'DhtmlGantt');
         $this->route->addRoute('dhtmlgantt/:project_id/create', 'TaskGanttController', 'create', 'DhtmlGantt');
