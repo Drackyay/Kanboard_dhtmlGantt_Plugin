@@ -20,6 +20,7 @@ class TaskGanttController extends BaseController
      */
     public function show()
     {
+        
         $project = $this->getProject();
         if (isset($_GET['search'])) {
             $search = $this->helper->projectHeader->getSearchQuery($project);
@@ -50,6 +51,13 @@ class TaskGanttController extends BaseController
         else {
             $filter->getQuery()->asc('column_position')->asc(TaskModel::TABLE.'.position');
         }
+           // NEW: Load the saved move-dependencies preference
+           $moveDepsEnabled = $this->projectMetadataModel->get(
+            $project['id'],
+            'move_dependencies_enabled',
+            true
+        );
+
 
         $this->response->html($this->helper->layout->app('DhtmlGantt:task_gantt/show', array(
             'project' => $project,
@@ -57,6 +65,7 @@ class TaskGanttController extends BaseController
             'description' => $this->helper->projectHeader->getDescription($project),
             'sorting' => $sorting,
             'tasks' => $filter->format($this->taskGanttFormatter),
+            'moveDepsEnabled' => $moveDepsEnabled, // NEW
         )));
     }
 
@@ -427,5 +436,46 @@ class TaskGanttController extends BaseController
 
         return $this->response->json(['result' => 'ok']);
     }
+
+    //     /**
+    //  * Save or update "Move Dependencies with Task" setting (per project)
+    //  * Route: ?controller=TaskGanttController&action=saveMoveDependenciesSetting&plugin=DhtmlGantt
+    //  */
+    // public function saveMoveDependenciesSetting()
+    // {
+    //     $project = $this->getProject();
+    //     $enabled = $this->request->getStringParam('enabled') === 'true';
+
+    //     // Save per-project preference (metadata is better than global config)
+    //     $this->projectMetadataModel->save($project['id'], [
+    //         'move_dependencies_enabled' => $enabled ? '1' : '0'
+    //     ]);
+
+    //     $this->response->json([
+    //         'result' => 'ok',
+    //         'project_id' => $project['id'],
+    //         'enabled' => $enabled
+    //     ]);
+    // }
+  /**
+     * Save or update "Move Dependencies with Task" setting (per project)
+     */
+    public function saveMoveDependenciesSetting()
+    {
+        $project = $this->getProject();
+        $enabled = $this->request->getStringParam('enabled') === 'true';
+
+        // Save per-project setting in metadata
+        $this->projectMetadataModel->save($project['id'], [
+            'move_dependencies_enabled' => $enabled ? '1' : '0',
+        ]);
+
+        $this->response->json([
+            'result' => 'ok',
+            'project_id' => $project['id'],
+            'enabled' => $enabled,
+        ]);
+    }
+
 
 }

@@ -45,6 +45,12 @@
                 <button id="dhtmlx-group-assignee" class="btn" title="<?= t('Group by Assignee') ?>">
     <i class="fa fa-users"></i> <?= t('Group by Assignee') ?>
 </button>
+    <!-- Toggle: Move Dependencies -->
+    <label class="dhtmlx-toggle" style="margin-left: 15px;">
+        <input type="checkbox" id="move-dependencies-toggle" checked>
+        <?= t('Move dependencies with task') ?>
+    </label>
+
                 
                 <button id="dhtmlx-zoom-in" class="btn" title="<?= t('Zoom In') ?>">
                     <i class="fa fa-search-plus"></i>
@@ -70,6 +76,7 @@
             <!-- <div id="dhtmlx-gantt-chart" style="width: 100%; height: 600px;"></div> -->
 
             <div id="dhtmlx-gantt-chart" 
+            data-project-id="<?= $project['id'] ?>"
      style="width: 100%; height: 600px;"
      data-tasks='<?= htmlspecialchars(json_encode($tasks), ENT_QUOTES, 'UTF-8') ?>'
      data-project-id="<?= $project['id'] ?>"
@@ -192,6 +199,39 @@
                 links: []
             };
         }
+
+        // --- Move Dependencies Toggle Logic ---
+
+let moveDependencies = true;
+
+// Restore saved preference (optional)
+const savedPref = localStorage.getItem("moveDependencies") === "true";
+if (savedPref !== null) {
+    moveDependencies = savedPref;
+    document.getElementById("move-dependencies-toggle").checked = moveDependencies;
+}
+
+// Update setting on toggle
+document.getElementById("move-dependencies-toggle").addEventListener("change", function(e) {
+    moveDependencies = e.target.checked;
+    localStorage.setItem("moveDependencies", moveDependencies);
+    gantt.config.auto_scheduling = moveDependencies; // enable/disable auto link shifting
+});
+
+// Hook into DHTMLX Gantt events
+if (typeof gantt !== "undefined") {
+    gantt.attachEvent("onBeforeTaskDrag", function(id, mode, e) {
+        if (!moveDependencies && mode === gantt.config.drag_mode.move) {
+            gantt.config.auto_scheduling = false;
+        }
+        return true;
+    });
+
+    gantt.attachEvent("onAfterTaskDrag", function(id, mode, e) {
+        gantt.config.auto_scheduling = moveDependencies;
+    });
+}
+
         </script>
 
     </div>
@@ -328,4 +368,18 @@
     background-color: #667eea !important;
     color: white !important;
 }
+
+.dhtmlx-toggle {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 13px;
+    color: #333;
+    cursor: pointer;
+}
+.dhtmlx-toggle input[type="checkbox"] {
+    transform: scale(1.1);
+    margin-right: 5px;
+}
+
 </style>
