@@ -24,6 +24,9 @@ class TaskGanttController extends BaseController
         $project = $this->getProject();
         if (isset($_GET['search'])) {
             $search = $this->helper->projectHeader->getSearchQuery($project);
+            
+            // ✅ SMART SEARCH: Auto-detect username and add "assignee:" prefix
+            $search = $this->enhanceSearchQuery($search);
         } else {
             // $search = 'n';
             $search = 'status:open status:closed'; // want to show all tasks or only open ones
@@ -437,27 +440,7 @@ class TaskGanttController extends BaseController
         return $this->response->json(['result' => 'ok']);
     }
 
-    //     /**
-    //  * Save or update "Move Dependencies with Task" setting (per project)
-    //  * Route: ?controller=TaskGanttController&action=saveMoveDependenciesSetting&plugin=DhtmlGantt
-    //  */
-    // public function saveMoveDependenciesSetting()
-    // {
-    //     $project = $this->getProject();
-    //     $enabled = $this->request->getStringParam('enabled') === 'true';
-
-    //     // Save per-project preference (metadata is better than global config)
-    //     $this->projectMetadataModel->save($project['id'], [
-    //         'move_dependencies_enabled' => $enabled ? '1' : '0'
-    //     ]);
-
-    //     $this->response->json([
-    //         'result' => 'ok',
-    //         'project_id' => $project['id'],
-    //         'enabled' => $enabled
-    //     ]);
-    // }
-  /**
+    /**
      * Save or update "Move Dependencies with Task" setting (per project)
      */
     public function saveMoveDependenciesSetting()
@@ -477,5 +460,70 @@ class TaskGanttController extends BaseController
         ]);
     }
 
+    /**
+     * ✅ SMART SEARCH ENHANCEMENT
+     * Automatically detects username searches and adds "assignee:" prefix
+     * Makes search more intuitive for stakeholders unfamiliar with Kanboard syntax
+     * 
+     * @param string $search Original search query
+     * @return string Enhanced search query
+     */
+    private function enhanceSearchQuery($search)
+    {
+        // Trim whitespace
+        $search = trim($search);
+        
+        // If empty, return as-is
+        if (empty($search)) {
+            return $search;
+        }
+        
+        // List of Kanboard search keywords/filters
+        $kanboardKeywords = [
+            'assignee:', 'creator:', 'category:', 'color:', 'column:', 
+            'description:', 'due:', 'modified:', 'created:', 'status:', 
+            'title:', 'reference:', 'link:', 'swimlane:', 'tag:', 
+            'priority:', 'project:', 'subtask:'
+        ];
+        
+        // Check if search already contains a Kanboard keyword
+        foreach ($kanboardKeywords as $keyword) {
+            if (stripos($search, $keyword) !== false) {
+                // Already has a filter keyword, return as-is
+                return $search;
+            }
+        }
+        
+        // Check if it's a simple word/phrase (likely a username)
+        // If it contains only alphanumeric, spaces, dots, underscores, hyphens
+        if (preg_match('/^[\w\s\.\-]+$/i', $search)) {
+            // Get all users in the project to validate username exists
+            $project = $this->getProject();
+            $users = $this->projectUserRoleModel->getUsers($project['id']);
+            
+            $searchLower = strtolower($search);
+            
+            // Check if the search term matches any username
+            foreach ($users as $user) {
+                $username = strtolower($user['username']);
+                $name = strtolower($user['name'] ?? '');
+                
+                // If search matches username or name, add "assignee:" prefix
+                if ($username === $searchLower || $name === $searchLower || 
+                    strpos($username, $searchLower) !== false || 
+                    strpos($name, $searchLower) !== false) {
+                    return 'assignee:' . $search;
+                }
+            }
+            
+            // Even if not found in users, still add assignee: prefix
+            // This handles cases where username might exist but not in this project
+            // Better UX: assume they're searching for an assignee
+            return 'assignee:' . $search;
+        }
+        
+        // For complex queries with special characters, return as-is
+        return $search;
+    }
 
 }
