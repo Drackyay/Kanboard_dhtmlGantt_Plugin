@@ -4,6 +4,18 @@
  * Additional CSS for Kanboard integration
  */
 
+/* Hide Type field by default to prevent flash - will be shown only for new tasks */
+.gantt_cal_light .gantt_cal_lsection:has(+ .gantt_cal_ltext select[title="type"]),
+.gantt_cal_light .gantt_cal_ltext:has(select[title="type"]) {
+    display: none !important;
+}
+
+/* Show Type field for new tasks (class added dynamically) */
+.gantt_cal_light.gantt-new-task .gantt_cal_lsection:has(+ .gantt_cal_ltext select[title="type"]),
+.gantt_cal_light.gantt-new-task .gantt_cal_ltext:has(select[title="type"]) {
+    display: block !important;
+}
+
 /* DHtmlX Gantt Container Styles */
 .dhtmlx-gantt-container {
     border: 1px solid #ddd;

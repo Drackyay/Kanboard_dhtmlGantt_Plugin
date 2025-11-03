@@ -254,6 +254,66 @@
  * DHtmlX Gantt Initialization Script for Kanboard
  */
 
+// Store users and groups data globally (defined early)
+window.projectUsers = [];
+window.projectGroups = [];
+window.groupMemberMap = {};
+
+// Fetch project members (users and groups) for assignment dropdowns
+function fetchProjectMembers(projectId) {
+    var url = '?controller=TaskGanttController&action=getProjectMembers&plugin=DhtmlGantt&project_id=' + projectId;
+    console.log('Fetching project members from:', url);
+    
+    fetch(url, {
+        method: 'GET',
+        headers: {
+            'Content-Type': 'application/json'
+        }
+    })
+    .then(function(response) {
+        console.log('Fetch response status:', response.status);
+        return response.text(); // Get text first to debug
+    })
+    .then(function(text) {
+        console.log('Response text:', text.substring(0, 500));
+        var data = JSON.parse(text);
+        if (data.result === 'ok') {
+            console.log('Project members loaded:', data);
+            window.projectUsers = data.users;
+            window.projectGroups = data.groups;
+            
+            // Build group member map for cascading dropdowns
+            window.groupMemberMap = {};
+            data.groups.forEach(function(group) {
+                window.groupMemberMap[group.key] = group.members || [];
+            });
+            
+            // Update lightbox sections with the fetched data
+            updateLightboxAssignmentOptions();
+        } else {
+            console.error('Failed to load project members:', data);
+        }
+    })
+    .catch(function(error) {
+        console.error('Error fetching project members:', error);
+    });
+}
+
+// Update lightbox dropdown options with fetched users and groups
+function updateLightboxAssignmentOptions() {
+    var sections = gantt.config.lightbox.sections;
+    
+    for (var i = 0; i < sections.length; i++) {
+        if (sections[i].name === 'group') {
+            sections[i].options = window.projectGroups;
+        } else if (sections[i].name === 'assignee') {
+            sections[i].options = window.projectUsers;
+        }
+    }
+    
+    console.log('Lightbox assignment options updated');
+}
+
 document.addEventListener('DOMContentLoaded', function() {
     console.log('DOM loaded, initializing DHtmlX Gantt...');
     
@@ -324,6 +384,12 @@ document.addEventListener('DOMContentLoaded', function() {
         createLink: container.getAttribute('data-create-link-url'),
         removeLink: container.getAttribute('data-remove-link-url')
     };
+    
+    // Fetch project members (users and groups) for assignment dropdowns
+    var projectId = container.getAttribute('data-project-id');
+    if (projectId) {
+        fetchProjectMembers(projectId);
+    }
     
     // Setup event handlers
     setupGanttEventHandlers();
@@ -459,6 +525,8 @@ gantt.config.lightbox.sections = [
         {key: true, label: "Milestone"}
     ]},
     {name: "description", height: 38, map_to: "text", type: "textarea", focus: true},
+    {name: "group", height: 22, map_to: "group_id", type: "select", options: []},
+    {name: "assignee", height: 22, map_to: "owner_id", type: "select", options: []},
     {name: "priority", height: 22, map_to: "priority", type: "select", options: [
         {key: "low", label: "Low"},
         {key: "normal", label: "Normal"},
@@ -471,16 +539,34 @@ gantt.config.lightbox.sections = [
 
 // Custom labels for lightbox sections
 gantt.locale.labels.section_type = "Type";
+gantt.locale.labels.section_group = "Group/Sprint";
+gantt.locale.labels.section_assignee = "Assign To";
 gantt.locale.labels.section_kanboard_link = "Quick Actions";
 
 // Set default values for new tasks
 gantt.attachEvent("onBeforeLightbox", function(id) {
     var task = gantt.getTask(id);
-    console.log('onBeforeLightbox for task:', id, 'is_milestone:', task.is_milestone, 'type:', typeof task.is_milestone);
+    
+    // Check if this is a new task (temporary ID) or existing task
+    var isNewTask = (typeof id === 'string' && id.toString().indexOf('$') === 0) || 
+                    (typeof id === 'number' && id < 0) ||
+                    !task.id || task.id === id; // DHtmlX uses $ prefix or negative IDs for new tasks
+    
+    console.log('onBeforeLightbox for task:', id, 'isNewTask:', isNewTask, 'owner_id:', task.owner_id);
     
     // Set default priority to "normal" if not already set
     if (!task.priority) {
         task.priority = "normal";
+    }
+    
+    // Set default owner_id to 0 (unassigned) if not set
+    if (task.owner_id === undefined || task.owner_id === null) {
+        task.owner_id = 0;
+    }
+    
+    // Set default group_id to 0 (All Users) if not set
+    if (task.group_id === undefined || task.group_id === null) {
+        task.group_id = 0;
     }
     
     // Always use type "task" for rendering (rectangular bars)
@@ -493,7 +579,24 @@ gantt.attachEvent("onBeforeLightbox", function(id) {
         task.is_milestone = false;
     }
     
-    console.log('After processing, is_milestone:', task.is_milestone);
+    // Store isNewTask flag for later use
+    task._isNewTask = isNewTask;
+    
+    // Add class to lightbox to control Type field visibility via CSS (no flash!)
+    setTimeout(function() {
+        var lightbox = document.querySelector('.gantt_cal_light');
+        if (lightbox) {
+            if (isNewTask) {
+                lightbox.classList.add('gantt-new-task');
+                console.log('Added gantt-new-task class for new task');
+            } else {
+                lightbox.classList.remove('gantt-new-task');
+                console.log('Removed gantt-new-task class for existing task');
+            }
+        }
+    }, 0); // Use 0 delay for immediate execution
+    
+    console.log('After processing, is_milestone:', task.is_milestone, 'owner_id:', task.owner_id);
     
     return true;
 });
@@ -501,7 +604,7 @@ gantt.attachEvent("onBeforeLightbox", function(id) {
 // Note: onAfterLightbox removed - setting the value in setupLightboxFieldToggle instead
 // This avoids conflicts with the main initialization logic
 
-// Watch for lightbox to appear and handle milestone field hiding
+// Watch for lightbox to appear and handle milestone field hiding + cascading dropdowns
 var lightboxObserver = new MutationObserver(function(mutations) {
     mutations.forEach(function(mutation) {
         mutation.addedNodes.forEach(function(node) {
@@ -510,6 +613,7 @@ var lightboxObserver = new MutationObserver(function(mutations) {
                 
                 setTimeout(function() {
                     setupLightboxFieldToggle();
+                    setupCascadingAssignmentDropdowns();
                 }, 100);
             }
         });
@@ -525,7 +629,6 @@ lightboxObserver.observe(document.body, {
 function setupLightboxFieldToggle(retryCount) {
     retryCount = retryCount || 0;
     
-    // Try multiple selectors
     var lightbox = document.querySelector('.gantt_cal_light');
     
     if (!lightbox && retryCount < 10) {
@@ -542,42 +645,25 @@ function setupLightboxFieldToggle(retryCount) {
     
     console.log('Lightbox found, looking for type select...');
     
-    // Debug: log all select elements in the lightbox
-    var allSelects = lightbox.querySelectorAll('select');
-    console.log('All select elements in lightbox:', allSelects.length);
-    allSelects.forEach(function(sel, idx) {
-        console.log('Select ' + idx + ':', sel, 'name:', sel.name, 'id:', sel.id);
-    });
+    var taskId = gantt.getSelectedId();
+    var task = taskId ? gantt.getTask(taskId) : null;
     
-    // Try different selectors - DHTMLX uses generated ids and empty names
-    // Use title attribute logged in console: title="type" / title="priority"
     var typeSelect = lightbox.querySelector('select[title="type"]');
-    
-    console.log('Setting up field toggle (attempt ' + (retryCount + 1) + '), type select:', typeSelect);
     
     if (!typeSelect) {
         if (retryCount < 10) {
-            // Retry after 50ms, up to 10 times (500ms total)
             setTimeout(function() {
                 setupLightboxFieldToggle(retryCount + 1);
             }, 50);
-        } else {
-            console.log('Type select not found after 10 retries');
         }
         return;
     }
     
-    console.log('Type select found! Setting up event listeners');
+    console.log('Type select found!');
     
-    // Try to get the task being edited to set the initial value
-    var taskId = gantt.getSelectedId();
     var shouldBeMilestone = false;
-    if (taskId) {
-        var task = gantt.getTask(taskId);
-        if (task && task.is_milestone) {
-            shouldBeMilestone = true;
-            console.log('Task is a milestone, will set to true after cloning');
-        }
+    if (taskId && task && task.is_milestone) {
+        shouldBeMilestone = true;
     }
     
     // Remove any existing listeners by cloning
@@ -586,10 +672,10 @@ function setupLightboxFieldToggle(retryCount) {
     // Set the value on the CLONED element
     if (shouldBeMilestone) {
         newTypeSelect.value = 'true';
-        console.log('Set NEW type select to true (Milestone) for task:', taskId);
+        console.log('Set type select to Milestone for task:', taskId);
     } else {
         newTypeSelect.value = 'false';
-        console.log('Set NEW type select to false (Task) for task:', taskId);
+        console.log('Set type select to Task for task:', taskId);
     }
     
     typeSelect.parentNode.replaceChild(newTypeSelect, typeSelect);
@@ -644,9 +730,143 @@ function setupLightboxFieldToggle(retryCount) {
     });
 }
 
+// Setup cascading dropdown logic: when group changes, filter assignee dropdown
+function setupCascadingAssignmentDropdowns(retryCount) {
+    retryCount = retryCount || 0;
+    
+    var lightbox = document.querySelector('.gantt_cal_light');
+    
+    if (!lightbox && retryCount < 10) {
+        setTimeout(function() {
+            setupCascadingAssignmentDropdowns(retryCount + 1);
+        }, 50);
+        return;
+    }
+    
+    if (!lightbox) {
+        console.log('Lightbox not found for cascading dropdowns');
+        return;
+    }
+    
+    // Wait for data to be loaded
+    if ((!window.projectUsers || window.projectUsers.length === 0) && retryCount < 20) {
+        console.log('Waiting for project members data... retry', retryCount);
+        setTimeout(function() {
+            setupCascadingAssignmentDropdowns(retryCount + 1);
+        }, 100);
+        return;
+    }
+    
+    console.log('Setting up cascading dropdowns with', window.projectUsers.length, 'users and', window.projectGroups.length, 'groups');
+    
+    var taskId = gantt.getSelectedId();
+    var groupSelect = lightbox.querySelector('select[title="group"]');
+    var assigneeSelect = lightbox.querySelector('select[title="assignee"]');
+    
+    if (!groupSelect || !assigneeSelect) {
+        console.log('Group or assignee select not found:', {group: !!groupSelect, assignee: !!assigneeSelect});
+        if (retryCount < 20) {
+            setTimeout(function() {
+                setupCascadingAssignmentDropdowns(retryCount + 1);
+            }, 50);
+        }
+        return;
+    }
+    
+    console.log('Cascading dropdowns found!');
+    
+    // Manually populate the dropdowns since DHtmlX might not have done it yet
+    if (groupSelect.options.length === 0 && window.projectGroups.length > 0) {
+        console.log('Manually populating group dropdown');
+        window.projectGroups.forEach(function(group) {
+            var option = document.createElement('option');
+            option.value = group.key;
+            option.textContent = group.label;
+            groupSelect.appendChild(option);
+        });
+    }
+    
+    if (assigneeSelect.options.length === 0 && window.projectUsers.length > 0) {
+        console.log('Manually populating assignee dropdown');
+        window.projectUsers.forEach(function(user) {
+            var option = document.createElement('option');
+            option.value = user.key;
+            option.textContent = user.label;
+            assigneeSelect.appendChild(option);
+        });
+    }
+    
+    // Store the original assignee value
+    var task = taskId ? gantt.getTask(taskId) : null;
+    var originalAssignee = task ? (task.owner_id || 0) : 0;
+    
+    // Function to filter assignee dropdown based on selected group
+    var filterAssignees = function() {
+        var selectedGroupId = parseInt(groupSelect.value) || 0;
+        console.log('Group changed to:', selectedGroupId);
+        
+        // Get members of the selected group
+        var allowedMembers = window.groupMemberMap[selectedGroupId] || [];
+        
+        // If "All Users" (0) is selected, show all users
+        if (selectedGroupId === 0) {
+            allowedMembers = window.projectUsers.map(function(u) { return u.key; });
+        }
+        
+        console.log('Allowed members:', allowedMembers);
+        
+        // Clear and repopulate assignee dropdown
+        assigneeSelect.innerHTML = '';
+        
+        window.projectUsers.forEach(function(user) {
+            // Show user if they're in the allowed list or if it's the "Unassigned" option
+            if (user.key === 0 || allowedMembers.indexOf(user.key) !== -1) {
+                var option = document.createElement('option');
+                option.value = user.key;
+                option.textContent = user.label;
+                assigneeSelect.appendChild(option);
+            }
+        });
+        
+        // Try to restore the original assignee if still in the list
+        if (originalAssignee && allowedMembers.indexOf(originalAssignee) !== -1) {
+            assigneeSelect.value = originalAssignee;
+        } else {
+            // Default to "Unassigned" if original assignee is not in the filtered list
+            assigneeSelect.value = 0;
+        }
+        
+        console.log('Assignee dropdown updated, selected:', assigneeSelect.value);
+    };
+    
+    // Set initial group based on task's assignee
+    if (task && task.owner_id) {
+        // Find which group contains this user
+        for (var groupId in window.groupMemberMap) {
+            if (window.groupMemberMap[groupId].indexOf(task.owner_id) !== -1) {
+                groupSelect.value = groupId;
+                break;
+            }
+        }
+    }
+    
+    // Apply initial filter
+    filterAssignees();
+    
+    // Add event listener for group changes
+    groupSelect.addEventListener('change', filterAssignees);
+}
+
 // Handle milestone save to keep type as task and apply green color
 gantt.attachEvent("onLightboxSave", function(id, task, is_new) {
-    console.log('Lightbox save, task:', task, 'is_milestone:', task.is_milestone, 'type:', typeof task.is_milestone);
+    console.log('Lightbox save, task:', task);
+    console.log('Task owner_id:', task.owner_id, 'group_id:', task.group_id, 'is_milestone:', task.is_milestone);
+    
+    // Ensure owner_id is properly set (convert string to integer if needed)
+    if (task.owner_id !== undefined && task.owner_id !== null) {
+        task.owner_id = parseInt(task.owner_id) || 0;
+        console.log('Converted owner_id to:', task.owner_id);
+    }
     
     // Always keep type as "task" for rectangular bars
     task.type = "task";
@@ -858,6 +1078,49 @@ function setupGanttEventHandlers() {
         return ok;
       });
     
+        // Handle task creation
+        gantt.attachEvent("onAfterTaskAdd", function(id, task) {
+            console.log('New task created, sending to server:', id, task);
+            
+            // Apply green color if milestone
+            if (task.is_milestone) {
+                task.color = "#27ae60";
+            }
+            
+            // Update statistics
+            updateStatistics();
+            
+            // Send create request to server including all fields
+            fetch(window.ganttUrls.create, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    text: task.text,
+                    start_date: task.start_date,
+                    end_date: task.end_date,
+                    priority: task.priority || 'normal',
+                    owner_id: task.owner_id || 0,
+                    is_milestone: task.is_milestone ? 1 : 0
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                console.log('Server response for new task:', data);
+                if (data.result === 'ok' && data.id) {
+                    // Update the task ID in Gantt with the server-assigned ID
+                    gantt.changeTaskId(id, data.id);
+                    console.log('Task ID updated from', id, 'to', data.id);
+                } else {
+                    console.error('Failed to create task:', data.message);
+                }
+            })
+            .catch(error => {
+                console.error('Error creating task:', error);
+            });
+        });
+        
         // Handle task updates (only for existing tasks)
         gantt.attachEvent("onAfterTaskUpdate", function(id, task) {
             console.log('Task updated, sending to server:', id, task);
@@ -880,6 +1143,7 @@ function setupGanttEventHandlers() {
                     start_date: task.start_date,
                     end_date: task.end_date,
                     priority: task.priority,
+                    owner_id: task.owner_id || 0,
                     is_milestone: task.is_milestone ? 1 : 0
                 })
             })
@@ -1264,8 +1528,10 @@ if (groupByAssigneeBtn) {
         console.log('Task statistics update for:', id, task);
         updateStatistics();
     });
-    gantt.attachEvent("onAfterTaskAdd", updateStatistics);
-    gantt.attachEvent("onAfterTaskDelete", updateStatistics);
+    // Note: onAfterTaskAdd is now handled above to save to server, so we update stats there
+    gantt.attachEvent("onAfterTaskDelete", function(id, task) {
+        updateStatistics();
+    });
 
 
 }

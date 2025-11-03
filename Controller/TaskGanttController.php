@@ -121,6 +121,12 @@ class TaskGanttController extends BaseController
             }
         }
         
+        // Update assignee (owner_id)
+        if (isset($changes['owner_id'])) {
+            $values['owner_id'] = (int) $changes['owner_id'];
+            error_log('DHtmlX Gantt Save - Setting owner_id to: ' . $values['owner_id']);
+        }
+        
         // Handle milestone status
         if (isset($changes['is_milestone'])) {
             $isMilestone = $changes['is_milestone'] ? '1' : '0';
@@ -178,6 +184,7 @@ class TaskGanttController extends BaseController
             'date_started' => !empty($data['start_date']) ? strtotime($data['start_date']) : null,
             'date_due' => !empty($data['end_date']) ? strtotime($data['end_date']) : null,
             'priority' => $priority,
+            'owner_id' => isset($data['owner_id']) ? (int) $data['owner_id'] : 0,
             'creator_id' => $this->userSession->getId(),
         ));
 
@@ -524,6 +531,111 @@ class TaskGanttController extends BaseController
         
         // For complex queries with special characters, return as-is
         return $search;
+    }
+
+    /**
+     * Get project users and groups for assignment dropdowns
+     */
+    public function getProjectMembers()
+    {
+        try {
+            $project = $this->getProject();
+            error_log('DHtmlX Gantt - Getting members for project: ' . $project['id']);
+            
+            // Get users assigned to this project
+            $projectUsers = $this->projectUserRoleModel->getUsers($project['id']);
+            error_log('DHtmlX Gantt - Found ' . count($projectUsers) . ' users assigned to project');
+            
+            $formattedUsers = array();
+            
+            // Add "Unassigned" option
+            $formattedUsers[] = array(
+                'key' => 0,
+                'label' => 'Unassigned'
+            );
+            
+            // Format users
+            foreach ($projectUsers as $user) {
+                $userId = isset($user['id']) ? $user['id'] : 0;
+                $userName = isset($user['username']) ? $user['username'] : 
+                           (isset($user['name']) && $user['name'] ? $user['name'] : 'User #' . $userId);
+                
+                if ($userId > 0) {
+                    $formattedUsers[] = array(
+                        'key' => (int)$userId,
+                        'label' => $userName
+                    );
+                }
+            }
+            
+            // Get project groups
+            $formattedGroups = array();
+            
+            // Build array of all user IDs for "All Users" group
+            $allUserIds = array();
+            foreach ($projectUsers as $user) {
+                if (isset($user['id']) && $user['id'] > 0) {
+                    $allUserIds[] = (int)$user['id'];
+                }
+            }
+            
+            // Add "All Users" option
+            $formattedGroups[] = array(
+                'key' => 0,
+                'label' => 'All Users',
+                'members' => $allUserIds
+            );
+            
+            // Get groups assigned to this project
+            if (method_exists($this->projectGroupRoleModel, 'getGroups')) {
+                $groups = $this->projectGroupRoleModel->getGroups($project['id']);
+                error_log('DHtmlX Gantt - Found ' . count($groups) . ' groups for project');
+                error_log('DHtmlX Gantt - Groups data: ' . json_encode($groups));
+                
+                foreach ($groups as $group) {
+                    error_log('DHtmlX Gantt - Processing group: ' . json_encode($group));
+                    // API returns 'id' and 'name', not 'group_id' and 'group_name'
+                    $groupId = isset($group['id']) ? $group['id'] : (isset($group['group_id']) ? $group['group_id'] : 0);
+                    $groupName = isset($group['name']) ? $group['name'] : (isset($group['group_name']) ? $group['group_name'] : 'Group #' . $groupId);
+                    
+                    if ($groupId > 0) {
+                        // Get group members
+                        $groupMembers = $this->groupMemberModel->getMembers($groupId);
+                        error_log('DHtmlX Gantt - Group ' . $groupId . ' has ' . count($groupMembers) . ' members');
+                        $memberIds = array();
+                        foreach ($groupMembers as $member) {
+                            if (isset($member['id'])) {
+                                $memberIds[] = (int)$member['id'];
+                            }
+                        }
+                        
+                        $formattedGroups[] = array(
+                            'key' => (int)$groupId,
+                            'label' => $groupName,
+                            'members' => $memberIds
+                        );
+                        error_log('DHtmlX Gantt - Added group: ' . $groupName . ' with members: ' . json_encode($memberIds));
+                    }
+                }
+            } else {
+                error_log('DHtmlX Gantt - projectGroupRoleModel->getGroups method does not exist');
+            }
+            
+            error_log('DHtmlX Gantt - Returning data: ' . count($formattedUsers) . ' users, ' . count($formattedGroups) . ' groups');
+            
+            $this->response->json(array(
+                'result' => 'ok',
+                'users' => $formattedUsers,
+                'groups' => $formattedGroups
+            ));
+        } catch (\Exception $e) {
+            error_log('DHtmlX Gantt - Error in getProjectMembers: ' . $e->getMessage());
+            error_log('DHtmlX Gantt - Stack trace: ' . $e->getTraceAsString());
+            $this->response->json(array(
+                'result' => 'error',
+                'message' => $e->getMessage()
+            ), 500);
+        }
     }
 
 }
