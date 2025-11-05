@@ -323,6 +323,24 @@ document.addEventListener('DOMContentLoaded', function() {
         console.error('Gantt container element not found!');
         return;
     }
+    // --- Group-by dropdown: navigate with &group_by=<value> (CSP-safe) ---
+    if (!window.__groupByBound) {
+        window.__groupByBound = true;
+        var sel = document.getElementById('group-by-select');
+        if (sel) {
+          var base = sel.getAttribute('data-nav-base') || '';
+          sel.addEventListener('change', function () {
+            try {
+              var url = new URL(base, window.location.origin);
+              url.searchParams.set('group_by', sel.value);
+              window.location.assign(url.toString());
+            } catch (e) {
+              var glue = base.indexOf('?') === -1 ? '?' : '&';
+              window.location.assign(base + glue + 'group_by=' + encodeURIComponent(sel.value));
+            }
+          });
+        }
+      }
     
     // Initialize DHtmlX Gantt
     var initialized = initDhtmlxGantt();
@@ -374,6 +392,7 @@ document.addEventListener('DOMContentLoaded', function() {
         console.warn('No task data found, loading empty chart');
         loadGanttData({data: [], links: []});
     }
+    applyInitialGrouping();
 
     
     // Setup URLs from data attributes
@@ -394,6 +413,7 @@ document.addEventListener('DOMContentLoaded', function() {
     // Setup event handlers
     setupGanttEventHandlers();
 });
+
 
 function initDhtmlxGantt() {
     // Check if DHtmlX Gantt library is loaded
@@ -1704,3 +1724,24 @@ function updateStatistics() {
     if (completedElement) completedElement.textContent = completed;
     if (progressElement) progressElement.textContent = inProgress;
 }
+// ---------------------------
+// Group-by initialization
+// ---------------------------
+function applyInitialGrouping() {
+    if (typeof gantt === 'undefined' || !gantt.groupBy) return;
+  
+    var container = document.getElementById('dhtmlx-gantt-chart');
+    var mode = (container && container.getAttribute('data-group-by')) || 'none';
+  
+    console.log('[Grouping] Applying initial mode:', mode);
+  
+    if (mode === 'none') {
+      gantt.groupBy(false); // clear grouping
+    } else if (mode === 'assignee' || mode === 'group' || mode === 'sprint') {
+      gantt.groupBy({
+        relation_property: mode,  // task.assignee / task.group / task.sprint
+        default_group_label: '—'
+      });
+    }
+  }
+  

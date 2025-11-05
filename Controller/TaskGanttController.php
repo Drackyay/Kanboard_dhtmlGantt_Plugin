@@ -20,19 +20,25 @@ class TaskGanttController extends BaseController
      */
     public function show()
     {
-        
         $project = $this->getProject();
+
         if (isset($_GET['search'])) {
             $search = $this->helper->projectHeader->getSearchQuery($project);
-            
-            // ✅ SMART SEARCH: Auto-detect username and add "assignee:" prefix
             $search = $this->enhanceSearchQuery($search);
         } else {
-            // $search = 'n';
-            $search = 'status:open status:closed'; // want to show all tasks or only open ones
+            $search = 'status:open status:closed';
         }
 
         $sorting = $this->request->getStringParam('sorting', '');
+
+        // NEW: read dropdown selection (none|group|assignee|sprint)
+        $groupBy = $this->request->getStringParam('group_by', 'none');
+
+        // tell the formatter what to do
+        if (method_exists($this->taskGanttFormatter, 'setGroupBy')) {
+            $this->taskGanttFormatter->setGroupBy($groupBy);
+        }        
+
         $filter = $this->taskLexer->build($search)->withFilter(new TaskProjectFilter($project['id']));
 
         if ($sorting === '') {
@@ -41,36 +47,32 @@ class TaskGanttController extends BaseController
 
         if ($sorting === 'date') {
             $filter->getQuery()->asc(TaskModel::TABLE.'.date_started')->asc(TaskModel::TABLE.'.date_due');
-        } 
-
-        // elseif ($sorting === 'assignee') {
-        //     // NEW: Sort by assignee name, with unassigned tasks at the end
-        //     $filter->getQuery()
-        //         ->join('users', 'id', 'owner_id', TaskModel::TABLE, 'LEFT')
-        //         ->asc('COALESCE(users.name, users.username, "ZZZ_Unassigned")')
-        //         ->asc(TaskModel::TABLE.'.position');
-        // }
-        
-        else {
+        } else {
             $filter->getQuery()->asc('column_position')->asc(TaskModel::TABLE.'.position');
         }
-           // NEW: Load the saved move-dependencies preference
-           $moveDepsEnabled = $this->projectMetadataModel->get(
-            $project['id'],
-            'move_dependencies_enabled',
-            true
-        );
 
+        // NEW: move-dependencies preference (unchanged)
+        $moveDepsEnabled = $this->projectMetadataModel->get($project['id'], 'move_dependencies_enabled', true);
 
-        $this->response->html($this->helper->layout->app('DhtmlGantt:task_gantt/show', array(
-            'project' => $project,
-            'title' => $project['name'],
-            'description' => $this->helper->projectHeader->getDescription($project),
-            'sorting' => $sorting,
-            'tasks' => $filter->format($this->taskGanttFormatter),
-            'moveDepsEnabled' => $moveDepsEnabled, // NEW
-        )));
+        // (Optional) if your formatter needs the project context:
+        if (method_exists($this->taskGanttFormatter, 'setProject')) {
+            $this->taskGanttFormatter->setProject($project);
+        }
+
+        $this->response->html($this->helper->layout->app(
+            'DhtmlGantt:task_gantt/show',
+            array(
+                'project'          => $project,
+                'title'            => $project['name'],
+                'description'      => $this->helper->projectHeader->getDescription($project),
+                'sorting'          => $sorting,
+                'tasks'            => $filter->format($this->taskGanttFormatter),
+                'moveDepsEnabled'  => $moveDepsEnabled,
+                'groupBy'          => $groupBy, // NEW (optional—your template can also read from request)
+            )
+        ));
     }
+
 
     /**
      * Save task updates (title, dates, priority, etc.)

@@ -25,6 +25,17 @@ class TaskGanttFormatter extends BaseFormatter implements FormatterInterface
 
     private static $ids = [];
 
+    // NEW:
+    protected $groupBy = 'none'; // 'none' | 'group' | 'assignee' | 'sprint'
+
+    // NEW:
+    public function setGroupBy(string $mode)
+    {
+        $allowed = ['none','group','assignee','sprint'];
+        $this->groupBy = in_array($mode, $allowed, true) ? $mode : 'none';
+        return $this;
+    }
+
     /**
      * Apply formatter for DHtmlX Gantt
      *
@@ -61,10 +72,75 @@ class TaskGanttFormatter extends BaseFormatter implements FormatterInterface
         // Get task links for dependencies
         $links = $this->formatLinks();
 
-        return array(
-            'data' => $tasks,
-            'links' => $links
-        );
+        // --- GROUPING ---
+        if ($this->groupBy === 'none') {
+            return array('data' => $tasks, 'links' => $links);
+        }
+
+        $key = $this->groupBy; // 'group' | 'assignee' | 'sprint'
+        $buckets = [];
+        $subtasks = [];
+
+        // Separate subtasks (ids like "subtask_123") so they keep their parent task
+        foreach ($tasks as $it) {
+            $isSubtask = is_string($it['id']) && strpos($it['id'], 'subtask_') === 0;
+            if ($isSubtask) {
+                $subtasks[] = $it;
+                continue;
+            }
+            $label = isset($it[$key]) && $it[$key] !== '' ? $it[$key] : '—';
+            if (!isset($buckets[$label])) $buckets[$label] = [];
+            $buckets[$label][] = $it;
+        }
+
+        $data = [];
+        $parentId = -100000; // negative to avoid collisions
+
+        foreach ($buckets as $label => $rows) {
+            // compute summary range + avg progress
+            $startMin = null; $endMax = null; $progressSum = 0.0; $count = 0;
+
+            foreach ($rows as $r) {
+                $s = strtotime($r['start_date']);
+                $e = !empty($r['end_date']) ? strtotime($r['end_date']) : ($s + ($r['duration'] * 86400));
+                $startMin = $startMin === null ? $s : min($startMin, $s);
+                $endMax   = $endMax === null   ? $e : max($endMax, $e);
+                $progressSum += (float) $r['progress'];
+                $count++;
+            }
+
+            $parent = array(
+                'id'         => $parentId,
+                'text'       => ucfirst($this->groupBy).': '.$label,
+                'start_date' => date('Y-m-d H:i', $startMin ?: time()),
+                'end_date'   => date('Y-m-d H:i', $endMax   ?: time()),
+                'duration'   => max(1, (int) ceil((($endMax ?: $startMin ?: time()) - ($startMin ?: time())) / 86400)),
+                'progress'   => $count ? $progressSum / $count : 0,
+                'type'       => 'project',
+                'readonly'   => true,
+                'open'       => true,
+                'parent'     => 0,
+            );
+            $data[] = $parent;
+
+            foreach ($rows as $r) {
+                // re-parent task under the group parent
+                $r['parent'] = $parentId;
+                $data[] = $r;
+
+                // append its subtasks (already have parent == task id)
+                foreach ($subtasks as $st) {
+                    if ((string)$st['parent'] === (string)$r['id']) {
+                        $data[] = $st;
+                    }
+                }
+            }
+
+            $parentId--;
+        }
+
+        return array('data' => $data, 'links' => $links);
+
     }
 
     /**
@@ -100,7 +176,20 @@ class TaskGanttFormatter extends BaseFormatter implements FormatterInterface
             'priority' => $this->mapPriority($task['priority']),
             'color' => $color,
             'owner_id' => $task['owner_id'],
-            'assignee' => $task['assignee_name'] ?: $task['assignee_username'],
+        
+            // make sure these exist for grouping:
+            'assignee' => $task['assignee_name']
+                ?? $task['assignee_username']
+                ?? $task['owner_name']
+                ?? $task['owner_username']
+                ?? t('Unassigned'),
+        
+            // If your "Group" should be swimlane instead, use $task['swimlane_name'] here:
+            'group' => $task['category_name'] ?? t('Ungrouped'),
+        
+            // Sprint commonly comes from metadata:
+            'sprint' => isset($metadata['sprint']) && $metadata['sprint'] !== '' ? $metadata['sprint'] : t('No Sprint'),
+        
             'column_title' => $task['column_name'],
             'category_id' => $task['category_id'],
             'link' => $this->helper->url->href('TaskViewController', 'show', array(
@@ -108,11 +197,13 @@ class TaskGanttFormatter extends BaseFormatter implements FormatterInterface
                 'task_id' => $task['id']
             )),
             'readonly' => $this->isReadonly($task),
-            'type' => 'task', // Always use 'task' type to show as rectangular bar
+            'type' => 'task',
             'is_milestone' => $isMilestone,
             'open' => true,
+        
+            // keep internal-link parent (we’ll still re-parent the top-level task under the group, subtasks stay under their task)
             'parent' => (int) ($this->resolveParentId((int)$task['id']) ?? 0),
-        );
+        );        
     }
 
     /**
