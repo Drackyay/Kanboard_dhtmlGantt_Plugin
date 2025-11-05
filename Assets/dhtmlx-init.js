@@ -888,6 +888,13 @@ gantt.attachEvent("onLightboxSave", function(id, task, is_new) {
         console.log('Converted owner_id to:', task.owner_id);
     }
     
+    // Validation: Task must be assigned to someone (cannot be Unassigned)
+    if (!task.owner_id || task.owner_id === 0) {
+        alert('Error: Task must be assigned to a user. Please select someone from the "Assign To" dropdown.');
+        console.error('Validation failed: Task must be assigned to a user');
+        return false; // Prevent saving
+    }
+    
     // Always keep type as "task" for rectangular bars
     task.type = "task";
     
@@ -903,7 +910,7 @@ gantt.attachEvent("onLightboxSave", function(id, task, is_new) {
         console.log('Task is not a milestone, keeping original color');
     }
     
-    return true;
+    return true; // Allow saving
 });
 
 gantt.form_blocks["template"] = {
