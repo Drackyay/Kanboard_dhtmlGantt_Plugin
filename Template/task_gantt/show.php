@@ -1,4 +1,4 @@
-<section id="main">
+<section id="main" style="display: flex; flex-direction: column; height: 100%;">
     <?= $this->projectHeader->render($project, 'TaskGanttController', 'show', false, 'DhtmlGantt') ?>
 
     <?php
@@ -6,8 +6,8 @@
         $sorting = isset($sorting) ? $sorting : $this->request->getStringParam('sorting', 'board');
         $cur     = isset($groupBy) && $groupBy !== '' ? $groupBy : 'none';
     ?>
-
-    <div class="menu-inline">
+    
+    <div class="menu-inline" style="flex-shrink: 0;">
         <ul>
             <!-- Group-by (CSP-safe: no inline JS; external listener will handle navigation) -->
             <li>
@@ -74,18 +74,25 @@
         </ul>
     </div>
 
-    <div class="dhtmlx-gantt-container">
-        <!-- Toolbar -->
-        <div class="dhtmlx-gantt-toolbar">
+    <div class="dhtmlx-gantt-container" style="flex: 1; display: flex; flex-direction: column; min-height: 0; overflow: hidden;">
+        <!-- DHtmlX Gantt Toolbar -->
+        <div class="dhtmlx-gantt-toolbar" style="flex-shrink: 0;">
             <button id="dhtmlx-add-task" class="btn btn-blue" title="<?= t('Add Task') ?>">
                 <i class="fa fa-plus"></i> <?= t('Add Task') ?>
             </button>
 
-            <!-- Toggle: Move Dependencies (handled by external JS) -->
+            <!-- NEW: Group by Assignee -->
+            <button id="dhtmlx-group-assignee" class="btn" title="<?= t('Group by Assignee') ?>">
+                <i class="fa fa-users"></i> <?= t('Group by Assignee') ?>
+            </button>
+
+            <!-- Toggle: Move Dependencies -->
             <label class="dhtmlx-toggle" style="margin-left: 15px;">
-                <input type="checkbox" id="move-dependencies-toggle" checked>
+                <input type="checkbox" id="move-dependencies-toggle">
                 <?= t('Move dependencies with task') ?>
             </label>
+
+            <div class="dhtmlx-toolbar-separator"></div>
 
             <button id="dhtmlx-zoom-in" class="btn" title="<?= t('Zoom In') ?>">
                 <i class="fa fa-search-plus"></i>
@@ -99,8 +106,6 @@
                 <i class="fa fa-arrows-alt"></i>
             </button>
 
-            <div class="dhtmlx-toolbar-separator"></div>
-
             <button id="dhtmlx-expand-all" class="btn" title="<?= t('Expand All') ?>">
                 <i class="fa fa-expand"></i>
             </button>
@@ -110,7 +115,7 @@
         <div id="dhtmlx-gantt-chart"
              data-project-id="<?= $project['id'] ?>"
              data-group-by="<?= $cur ?>" 
-             style="width: 100%; height: 600px;"
+             style="flex: 1; width: 100%; min-height: 0; position: relative;"
              data-tasks='<?= htmlspecialchars(json_encode($tasks), ENT_QUOTES, 'UTF-8') ?>'
              data-update-url="<?= $this->url->href('TaskGanttController', 'save', array('project_id' => $project['id'], 'plugin' => 'DhtmlGantt')) ?>"
              data-create-url="<?= $this->url->href('TaskGanttController', 'create', array('project_id' => $project['id'], 'plugin' => 'DhtmlGantt')) ?>"
@@ -119,8 +124,8 @@
              data-remove-link-url="<?= $this->url->href('TaskGanttController', 'removeDependency', array('project_id' => $project['id'], 'plugin' => 'DhtmlGantt')) ?>">
         </div>
 
-        <!-- Side info -->
-        <div class="dhtmlx-gantt-info">
+        <!-- Task Information Panel -->
+        <div class="dhtmlx-gantt-info" style="flex-shrink: 0;">
             <div class="dhtmlx-info-section">
                 <h3><?= t('Project Statistics') ?></h3>
                 <div class="dhtmlx-stats">

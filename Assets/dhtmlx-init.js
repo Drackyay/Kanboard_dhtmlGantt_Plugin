@@ -315,12 +315,13 @@ function updateLightboxAssignmentOptions() {
 }
 
 document.addEventListener('DOMContentLoaded', function() {
-    console.log('DOM loaded, initializing DHtmlX Gantt...');
+    console.log('DOM loaded, checking for DHtmlX Gantt container...');
     
     // Get the container element
     var container = document.getElementById('dhtmlx-gantt-chart');
     if (!container) {
-        console.error('Gantt container element not found!');
+        // Not on Gantt page - this is expected, skip initialization
+        console.debug('Gantt container not found - skipping initialization (not on Gantt page)');
         return;
     }
     // --- Group-by dropdown: navigate with &group_by=<value> (CSP-safe) ---
@@ -341,6 +342,8 @@ document.addEventListener('DOMContentLoaded', function() {
           });
         }
       }
+    
+    console.log('Gantt container found, initializing DHtmlX Gantt...');
     
     // Initialize DHtmlX Gantt
     var initialized = initDhtmlxGantt();
@@ -450,8 +453,22 @@ function initDhtmlxGantt() {
         tooltip: true,
         keyboard_navigation: true,
         undo: true,
-        grouping: true  // Add this line
+        grouping: true
+        // NOTE: auto_scheduling is a PRO feature, not available in GPL
     });
+    
+    // Enable drag for links
+    gantt.config.drag_links = true;
+    gantt.config.show_links = true;
+    
+    // Configure link types
+    gantt.config.types = {
+        task: "task",
+        project: "project",
+        milestone: "milestone"
+    };
+    
+    console.log('✅ Gantt configured (GPL version - manual dependency movement)');
 
 
 
@@ -959,11 +976,226 @@ gantt.form_blocks["template"] = {
     try {
         gantt.init("dhtmlx-gantt-chart");
         console.log('DHtmlX Gantt initialized successfully');
+        
+        // ✅ RESPONSIVE BEHAVIOR: Handle window resize
+        var resizeTimeout;
+        window.addEventListener('resize', function() {
+            // Debounce resize events to avoid performance issues
+            clearTimeout(resizeTimeout);
+            resizeTimeout = setTimeout(function() {
+                console.log('Window resized, updating Gantt chart dimensions...');
+                // Force DHTMLX to recalculate dimensions
+                gantt.setSizes();
+                gantt.render();
+            }, 250);
+        });
+        
+        // Initial sizing after initialization
+        setTimeout(function() {
+            gantt.setSizes();
+        }, 100);
+        
+        // ✅ SETUP TOGGLE FOR MOVE DEPENDENCIES WITH TASK
+        setupMoveDependenciesToggle();
+        
+        // ✅ MANUAL DEPENDENCY MOVEMENT (GPL version doesn't have auto-scheduling)
+        setupManualDependencyMovement();
+        
         return true;
     } catch (error) {
         console.error('Error initializing DHtmlX Gantt:', error);
         return false;
     }
+}
+
+// Global variable to track toggle state
+var moveDependenciesEnabled = false;
+
+/**
+ * ✅ SETUP MOVE DEPENDENCIES TOGGLE
+ * Controls whether dependencies move manually when tasks are dragged
+ */
+function setupMoveDependenciesToggle() {
+    var toggleEl = document.getElementById('move-dependencies-toggle');
+    if (!toggleEl) {
+        console.warn('Move dependencies toggle not found');
+        return;
+    }
+    
+    // Restore saved preference from localStorage (default: OFF)
+    var savedPref = localStorage.getItem('moveDependencies');
+    if (savedPref !== null) {
+        moveDependenciesEnabled = savedPref === 'true';
+    } else {
+        moveDependenciesEnabled = false; // Default: OFF
+    }
+    toggleEl.checked = moveDependenciesEnabled;
+    
+    // Handle toggle changes
+    toggleEl.addEventListener('change', function(e) {
+        moveDependenciesEnabled = e.target.checked;
+        localStorage.setItem('moveDependencies', moveDependenciesEnabled);
+        
+        // Show feedback message
+        if (typeof gantt.message === 'function') {
+            gantt.message({
+                text: moveDependenciesEnabled 
+                    ? '✅ ON: Dependent tasks will move with this task' 
+                    : '⏸️ OFF: Dependent tasks will stay in place',
+                type: moveDependenciesEnabled ? 'info' : 'warning',
+                expire: 3000
+            });
+        }
+        
+        console.log('🔄 Move dependencies toggled:', moveDependenciesEnabled);
+    });
+    
+    console.log('✅ Move dependencies toggle initialized - Default: OFF, Current:', moveDependenciesEnabled);
+}
+
+/**
+ * ✅ MANUAL DEPENDENCY MOVEMENT
+ * Implements dependency movement for GPL version (auto-scheduling is PRO only)
+ */
+function setupManualDependencyMovement() {
+    var taskOriginalDates = {};
+    var isMovingDependencies = false; // Flag to prevent re-entrant calls
+    
+    // Store original dates before drag
+    gantt.attachEvent("onBeforeTaskDrag", function(id, mode, e) {
+        if (!moveDependenciesEnabled || isMovingDependencies) return true;
+        
+        var task = gantt.getTask(id);
+        taskOriginalDates[id] = {
+            start: new Date(task.start_date),
+            end: new Date(task.end_date)
+        };
+        console.log('📍 Drag started for task:', id, task.text);
+        return true;
+    });
+    
+    // Move dependent tasks after drag completes
+    gantt.attachEvent("onAfterTaskDrag", function(id, mode, e) {
+        console.log('📍 Drag ended for task:', id, 'Mode:', mode, 'Toggle:', moveDependenciesEnabled, 'IsMoving:', isMovingDependencies);
+        
+        // Prevent re-entrant calls when we're already moving dependencies
+        if (isMovingDependencies) {
+            console.log('⚠️ Already moving dependencies, skipping');
+            return;
+        }
+        
+        if (!moveDependenciesEnabled || !taskOriginalDates[id]) {
+            delete taskOriginalDates[id];
+            return;
+        }
+        
+        var task = gantt.getTask(id);
+        var originalStart = taskOriginalDates[id].start;
+        var newStart = task.start_date;
+        
+        // Calculate time difference
+        var timeDiff = newStart - originalStart;
+        
+        if (timeDiff === 0) {
+            console.log('⚪ No movement detected');
+            delete taskOriginalDates[id];
+            return;
+        }
+        
+        console.log('🔄 Task moved by:', timeDiff, 'ms (', timeDiff / (1000 * 60 * 60 * 24), 'days)');
+        
+        // Set flag to prevent re-entrant calls
+        isMovingDependencies = true;
+        
+        // Find all tasks that depend on this task (successors)
+        var movedTasks = moveSuccessorTasks(id, timeDiff);
+        
+        // Clear flag
+        isMovingDependencies = false;
+        
+        if (movedTasks.length > 0) {
+            console.log('✅ Moved', movedTasks.length, 'dependent task(s):', movedTasks);
+            gantt.message({
+                text: '✅ Moved ' + movedTasks.length + ' dependent task(s)',
+                type: 'info',
+                expire: 2000
+            });
+        } else {
+            console.log('⚪ No dependent tasks to move');
+        }
+        
+        delete taskOriginalDates[id];
+    });
+    
+    console.log('✅ Manual dependency movement initialized');
+}
+
+/**
+ * Move all successor tasks (tasks that depend on this task)
+ * @param {number} taskId - ID of the task that was moved
+ * @param {number} timeDiff - Time difference in milliseconds
+ * @returns {array} Array of moved task IDs
+ */
+function moveSuccessorTasks(taskId, timeDiff) {
+    var movedTasks = [];
+    var processed = {};
+    var originalDates = {}; // Store original dates BEFORE any movement
+    
+    // First pass: Find all successors and store their original dates
+    function findAllSuccessors(id) {
+        if (processed[id]) return;
+        processed[id] = true;
+        
+        var links = gantt.getLinks();
+        var successors = links.filter(function(link) {
+            return link.source == id;
+        });
+        
+        successors.forEach(function(link) {
+            var targetTask = gantt.getTask(link.target);
+            
+            // Store original dates if not already stored
+            if (!originalDates[link.target]) {
+                originalDates[link.target] = {
+                    start: new Date(targetTask.start_date),
+                    end: new Date(targetTask.end_date)
+                };
+            }
+            
+            // Recursively find successors
+            findAllSuccessors(link.target);
+        });
+    }
+    
+    // Second pass: Move all successors using their stored original dates
+    function moveAllSuccessors() {
+        for (var taskId in originalDates) {
+            var task = gantt.getTask(taskId);
+            var original = originalDates[taskId];
+            
+            // Calculate new dates from ORIGINAL dates + offset
+            var newStart = new Date(original.start.getTime() + timeDiff);
+            var newEnd = new Date(original.end.getTime() + timeDiff);
+            
+            // Update the task silently
+            task.start_date = newStart;
+            task.end_date = newEnd;
+            gantt.refreshTask(taskId);
+            
+            movedTasks.push(taskId);
+            console.log('  ↳ Moved task:', taskId, task.text, 
+                'from', original.start.toDateString(), 
+                'to', newStart.toDateString(),
+                '(' + (timeDiff / (1000 * 60 * 60 * 24)).toFixed(1) + ' days)');
+        }
+    }
+    
+    // Execute: find all, then move all
+    findAllSuccessors(taskId);
+    moveAllSuccessors();
+    gantt.render();
+    
+    return movedTasks;
 }
 
 function loadGanttData(data) {
@@ -1148,9 +1380,13 @@ function setupGanttEventHandlers() {
             });
         });
         
-        // Handle task updates (only for existing tasks)
+        // ✅ Track tasks that need to be saved after auto-scheduling completes
+        var tasksToSave = {};
+        var saveTimeout = null;
+        
+        // Handle task updates - batch updates to avoid interfering with auto-scheduling
         gantt.attachEvent("onAfterTaskUpdate", function(id, task) {
-            console.log('Task updated, sending to server:', id, task);
+            console.log('Task updated:', id, task.text);
             
             // Apply green color if milestone
             if (task.is_milestone) {
@@ -1158,33 +1394,54 @@ function setupGanttEventHandlers() {
                 gantt.refreshTask(id); // Force re-render with new color
             }
             
-            // Send update to server including all fields
-            fetch(window.ganttUrls.update, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    id: id,
-                    text: task.text,
-                    start_date: task.start_date,
-                    end_date: task.end_date,
-                    priority: task.priority,
-                    owner_id: task.owner_id || 0,
-                    is_milestone: task.is_milestone ? 1 : 0
-                })
-            })
-            .then(response => response.json())
-            .then(data => {
-                console.log('Server response:', data);
-                if (data.result !== 'ok') {
-                    console.error('Failed to save task:', data.message);
-                }
-            })
-            .catch(error => {
-                console.error('Error saving task:', error);
-            });
+            // Add task to save queue instead of saving immediately
+            tasksToSave[id] = {
+                id: id,
+                text: task.text,
+                start_date: task.start_date,
+                end_date: task.end_date,
+                priority: task.priority,
+                is_milestone: task.is_milestone ? 1 : 0
+            };
+            
+            // Debounce: wait for auto-scheduling to complete before saving
+            clearTimeout(saveTimeout);
+            saveTimeout = setTimeout(function() {
+                saveQueuedTasks();
+            }, 500); // Wait 500ms for auto-scheduling to finish
         });
+        
+        // Save all queued tasks at once
+        function saveQueuedTasks() {
+            if (Object.keys(tasksToSave).length === 0) return;
+            
+            console.log('Saving queued tasks:', Object.keys(tasksToSave));
+            
+            // Save each task
+            for (var taskId in tasksToSave) {
+                var taskData = tasksToSave[taskId];
+                
+                fetch(window.ganttUrls.update, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(taskData)
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.result !== 'ok') {
+                        console.error('Failed to save task:', data.message);
+                    }
+                })
+                .catch(error => {
+                    console.error('Error saving task:', error);
+                });
+            }
+            
+            // Clear the queue
+            tasksToSave = {};
+        }
         
         // Handle task deletion
         gantt.attachEvent("onBeforeTaskDelete", function(id, task) {

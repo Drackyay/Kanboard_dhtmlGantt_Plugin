@@ -16,11 +16,50 @@
     display: block !important;
 }
 
+/* ✅ RESPONSIVE LAYOUT: Full viewport height management */
+#main {
+    display: flex !important;
+    flex-direction: column !important;
+    height: calc(100vh - 50px) !important; /* Account for Kanboard top nav */
+    min-height: 600px !important;
+    overflow: hidden !important;
+}
+
 /* DHtmlX Gantt Container Styles */
 .dhtmlx-gantt-container {
     border: 1px solid #ddd;
     background: #fff;
     margin: 20px 0;
+    flex: 1 !important; /* Take remaining space */
+    display: flex !important;
+    flex-direction: column !important;
+    position: relative;
+    min-height: 0 !important; /* Critical for flex children */
+    overflow: hidden !important;
+}
+
+/* ✅ RESPONSIVE GANTT CHART: Make chart adapt to viewport */
+#dhtmlx-gantt-chart {
+    flex: 1 !important; /* Take all available space */
+    width: 100% !important;
+    min-height: 0 !important; /* Critical for proper flex sizing */
+    position: relative !important;
+    overflow: hidden !important; /* DHTMLX handles internal scrolling */
+}
+
+/* Ensure Gantt chart internal container uses full height */
+#dhtmlx-gantt-chart .gantt_container {
+    height: 100% !important;
+    width: 100% !important;
+    position: absolute !important;
+    top: 0 !important;
+    left: 0 !important;
+}
+
+/* Ensure toolbar and info panel don't grow */
+.dhtmlx-gantt-toolbar,
+.dhtmlx-gantt-info {
+    flex-shrink: 0 !important;
 }
 
 .dhtmlx-gantt-toolbar {

@@ -470,8 +470,9 @@ class TaskGanttController extends BaseController
     }
 
     /**
-     * ✅ SMART SEARCH ENHANCEMENT
-     * Automatically detects username searches and adds "assignee:" prefix
+     * ✅ SMART SEARCH ENHANCEMENT V2
+     * Automatically detects username OR user group searches
+     * Adds appropriate prefix: "assignee:" for users, "group:" for user groups
      * Makes search more intuitive for stakeholders unfamiliar with Kanboard syntax
      * 
      * @param string $search Original search query
@@ -492,7 +493,7 @@ class TaskGanttController extends BaseController
             'assignee:', 'creator:', 'category:', 'color:', 'column:', 
             'description:', 'due:', 'modified:', 'created:', 'status:', 
             'title:', 'reference:', 'link:', 'swimlane:', 'tag:', 
-            'priority:', 'project:', 'subtask:'
+            'priority:', 'project:', 'subtask:', 'group:'
         ];
         
         // Check if search already contains a Kanboard keyword
@@ -503,21 +504,47 @@ class TaskGanttController extends BaseController
             }
         }
         
-        // Check if it's a simple word/phrase (likely a username)
+        // Check if it's a simple word/phrase (likely a username or group name)
         // If it contains only alphanumeric, spaces, dots, underscores, hyphens
         if (preg_match('/^[\w\s\.\-]+$/i', $search)) {
-            // Get all users in the project to validate username exists
             $project = $this->getProject();
-            $users = $this->projectUserRoleModel->getUsers($project['id']);
-            
             $searchLower = strtolower($search);
             
-            // Check if the search term matches any username
+            // PRIORITY 1: Check user groups first (organizational unit)
+            $groups = $this->groupModel->getAll();
+            foreach ($groups as $group) {
+                $groupName = strtolower($group['name']);
+                
+                // If search matches group name (exact or partial)
+                if ($groupName === $searchLower || 
+                    strpos($groupName, $searchLower) !== false) {
+                    
+                    // Get all users in this group
+                    $groupMembers = $this->groupMemberModel->getMembers($group['id']);
+                    
+                    if (!empty($groupMembers)) {
+                        // Build OR query: assignee:user1 assignee:user2 assignee:user3
+                        $userQueries = [];
+                        foreach ($groupMembers as $member) {
+                            $userQueries[] = 'assignee:' . $member['username'];
+                        }
+                        
+                        // Join with OR logic (space-separated in Kanboard means OR for same field)
+                        return implode(' ', $userQueries);
+                    } else {
+                        // Group exists but has no members, return impossible query
+                        return 'assignee:__NOBODY__';
+                    }
+                }
+            }
+            
+            // PRIORITY 2: Check users/assignees in this project
+            $users = $this->projectUserRoleModel->getUsers($project['id']);
             foreach ($users as $user) {
                 $username = strtolower($user['username']);
                 $name = strtolower($user['name'] ?? '');
                 
-                // If search matches username or name, add "assignee:" prefix
+                // If search matches username or name (exact or partial)
                 if ($username === $searchLower || $name === $searchLower || 
                     strpos($username, $searchLower) !== false || 
                     strpos($name, $searchLower) !== false) {
@@ -525,9 +552,8 @@ class TaskGanttController extends BaseController
                 }
             }
             
-            // Even if not found in users, still add assignee: prefix
-            // This handles cases where username might exist but not in this project
-            // Better UX: assume they're searching for an assignee
+            // PRIORITY 3: If not found in either, default to assignee search
+            // (More common use case than group)
             return 'assignee:' . $search;
         }
         

@@ -238,46 +238,7 @@
             }
             return true; // allow valid link
         });
-                // ======================================================
-        // "Move Dependencies with Task" Toggle Handling
-        // ======================================================
-
-        let moveDependencies = true;
-
-        // Initialize from localStorage (persisted preference)
-        const moveToggleEl = document.getElementById("move-dependencies-toggle");
-        if (moveToggleEl) {
-            const savedPref = localStorage.getItem("moveDependencies");
-            if (savedPref !== null) {
-                moveDependencies = savedPref === "true";
-                moveToggleEl.checked = moveDependencies;
-            }
-
-            // Update preference on toggle change
-            moveToggleEl.addEventListener("change", function(e) {
-                moveDependencies = e.target.checked;
-                localStorage.setItem("moveDependencies", moveDependencies);
-                gantt.config.auto_scheduling = moveDependencies;
-                gantt.message({
-                    text: moveDependencies
-                        ? " Dependencies will move with task."
-                        : " Dependencies will stay fixed.",
-                    expire: 2000
-                });
-            });
-        }
-
-        // Hook into drag events to dynamically control dependency movement
-        gantt.attachEvent("onBeforeTaskDrag", function(id, mode, e) {
-            if (!moveDependencies && mode === gantt.config.drag_mode.move) {
-                gantt.config.auto_scheduling = false;
-            }
-            return true;
-        });
-
-        gantt.attachEvent("onAfterTaskDrag", function(id, mode, e) {
-            gantt.config.auto_scheduling = moveDependencies;
-        });
+               
 
         console.log("Kanboard DHtmlX Gantt extensions loaded successfully");
     }
