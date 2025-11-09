@@ -9,26 +9,6 @@
     
     <div class="menu-inline" style="flex-shrink: 0;">
         <ul>
-            <!-- Group-by (CSP-safe: no inline JS; external listener will handle navigation) -->
-            <li>
-                <span class="icon fa-users"></span> <?= t('Group by') ?>
-                <select id="group-by-select"
-                        data-nav-base="<?= $this->url->href(
-                            'TaskGanttController',
-                            'show',
-                            array(
-                                'project_id' => $project['id'],
-                                'sorting'    => $sorting ?: 'board',
-                                'plugin'     => 'DhtmlGantt'
-                            )
-                        ) ?>">
-                    <option value="none"     <?= $cur === 'none' ? 'selected' : '' ?>><?= t('None') ?></option>
-                    <option value="group"    <?= $cur === 'group' ? 'selected' : '' ?>><?= t('Group') ?></option>
-                    <option value="assignee" <?= $cur === 'assignee' ? 'selected' : '' ?>><?= t('Assignee') ?></option>
-                    <option value="sprint"   <?= $cur === 'sprint' ? 'selected' : '' ?>><?= t('Sprint') ?></option>
-                </select>
-            </li>
-
             <!-- Sort by position -->
             <li <?= $sorting === 'board' ? 'class="active"' : '' ?>>
                 <?= $this->url->icon(
@@ -81,10 +61,16 @@
                 <i class="fa fa-plus"></i> <?= t('Add Task') ?>
             </button>
 
-            <!-- NEW: Group by Assignee -->
-            <button id="dhtmlx-group-assignee" class="btn" title="<?= t('Group by Assignee') ?>">
-                <i class="fa fa-users"></i> <?= t('Group by Assignee') ?>
-            </button>
+            <!-- Group by Dropdown -->
+            <label style="margin-left: 15px; display: flex; align-items: center; gap: 5px;">
+                <i class="fa fa-users"></i>
+                <span><?= t('Group by') ?>:</span>
+                <select id="dhtmlx-group-by-select" class="btn" style="padding: 5px 10px; cursor: pointer;">
+                    <option value="none"><?= t('None') ?></option>
+                    <option value="assignee"><?= t('Assignee') ?></option>
+                    <option value="group"><?= t('User Group') ?></option>
+                </select>
+            </label>
 
             <!-- Toggle: Move Dependencies -->
             <label class="dhtmlx-toggle" style="margin-left: 15px;">

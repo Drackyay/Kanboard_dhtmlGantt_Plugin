@@ -324,24 +324,7 @@ document.addEventListener('DOMContentLoaded', function() {
         console.debug('Gantt container not found - skipping initialization (not on Gantt page)');
         return;
     }
-    // --- Group-by dropdown: navigate with &group_by=<value> (CSP-safe) ---
-    if (!window.__groupByBound) {
-        window.__groupByBound = true;
-        var sel = document.getElementById('group-by-select');
-        if (sel) {
-          var base = sel.getAttribute('data-nav-base') || '';
-          sel.addEventListener('change', function () {
-            try {
-              var url = new URL(base, window.location.origin);
-              url.searchParams.set('group_by', sel.value);
-              window.location.assign(url.toString());
-            } catch (e) {
-              var glue = base.indexOf('?') === -1 ? '?' : '&';
-              window.location.assign(base + glue + 'group_by=' + encodeURIComponent(sel.value));
-            }
-          });
-        }
-      }
+    // ✅ Old group-by dropdown removed (now using client-side dropdown in toolbar)
     
     console.log('Gantt container found, initializing DHtmlX Gantt...');
     
@@ -395,7 +378,7 @@ document.addEventListener('DOMContentLoaded', function() {
         console.warn('No task data found, loading empty chart');
         loadGanttData({data: [], links: []});
     }
-    applyInitialGrouping();
+    // ✅ No initial grouping - user controls via dropdown
 
     
     // Setup URLs from data attributes
@@ -448,13 +431,18 @@ function initDhtmlxGantt() {
     gantt.config.grid_width = 400;
     gantt.config.show_grid = true;
     
+    // ✅ TIME PRECISION: Allow precise time adjustments when dragging
+    gantt.config.round_dnd_dates = false;  // Don't round dates during drag-and-drop
+    gantt.config.time_step = 60;  // 60 minutes = 1 hour precision
+    gantt.config.duration_unit = "day";  // Duration is in days
+    gantt.config.duration_step = 1;  // Minimum duration step
+    
     // Enable plugins
     gantt.plugins({
         tooltip: true,
         keyboard_navigation: true,
-        undo: true,
-        grouping: true
-        // NOTE: auto_scheduling is a PRO feature, not available in GPL
+        undo: true
+        // NOTE: grouping and auto_scheduling are PRO features, not available in GPL
     });
     
     // Enable drag for links
@@ -510,24 +498,22 @@ function initDhtmlxGantt() {
         return "<span>" + Math.round(task.progress * 100) + "% </span>";
     };
     
-    // Task text template - show task name with assignee for regular tasks, "M" for milestones
+    // Task text template - show task name and assignee on the bar
     gantt.templates.task_text = function(start, end, task) {
         if (task.is_milestone) {
             return "M";
         }
-        
-        var text = task.text;
-        // Add assignee name in brackets if available
-        if (task.assignee && task.assignee.trim() !== '') {
-            text += " [" + task.assignee + "]";
+        // Show task name with assignee if available
+        if (task.assignee && task.assignee.trim() !== '' && task.assignee !== 'Unassigned') {
+            return task.text + ' (' + task.assignee + ')';
         }
-        return text;
+        return task.text;
     };
     
-    // Right-side text template - show assignee with icon
+    // ✅ Show assignee name to the RIGHT of the bar
     gantt.templates.rightside_text = function(start, end, task) {
         if (task.assignee && task.assignee.trim() !== '') {
-            return "👤 " + task.assignee;
+            return task.assignee;
         }
         return "";
     };
@@ -1350,6 +1336,12 @@ function setupGanttEventHandlers() {
             updateStatistics();
             
             // Send create request to server including all fields
+            // ✅ Format dates as strings to preserve exact time
+            var formattedStartDate = gantt.date.date_to_str(gantt.config.date_format)(task.start_date);
+            var formattedEndDate = gantt.date.date_to_str(gantt.config.date_format)(task.end_date);
+            
+            console.log('Creating task with times:', formattedStartDate, '→', formattedEndDate);
+            
             fetch(window.ganttUrls.create, {
                 method: 'POST',
                 headers: {
@@ -1357,8 +1349,8 @@ function setupGanttEventHandlers() {
                 },
                 body: JSON.stringify({
                     text: task.text,
-                    start_date: task.start_date,
-                    end_date: task.end_date,
+                    start_date: formattedStartDate,
+                    end_date: formattedEndDate,
                     priority: task.priority || 'normal',
                     owner_id: task.owner_id || 0,
                     is_milestone: task.is_milestone ? 1 : 0
@@ -1395,14 +1387,21 @@ function setupGanttEventHandlers() {
             }
             
             // Add task to save queue instead of saving immediately
+            // ✅ Format dates as strings to preserve exact time
             tasksToSave[id] = {
                 id: id,
                 text: task.text,
-                start_date: task.start_date,
-                end_date: task.end_date,
+                start_date: gantt.date.date_to_str(gantt.config.date_format)(task.start_date),
+                end_date: gantt.date.date_to_str(gantt.config.date_format)(task.end_date),
                 priority: task.priority,
                 is_milestone: task.is_milestone ? 1 : 0
             };
+            
+            console.log('  📅 Queued task times:', {
+                id: id,
+                start: tasksToSave[id].start_date,
+                end: tasksToSave[id].end_date
+            });
             
             // Debounce: wait for auto-scheduling to complete before saving
             clearTimeout(saveTimeout);
@@ -1755,21 +1754,360 @@ function fallbackRefresh() {
     });
 }
 
-var groupByAssigneeBtn = document.getElementById('dhtmlx-group-assignee');
-if (groupByAssigneeBtn) {
-    var isGrouped = false;
-    groupByAssigneeBtn.addEventListener('click', function() {
-        if (!isGrouped) {
-            groupByAssignee();
-            this.classList.add('active');
-            isGrouped = true;
+// ✅ GROUP BY DROPDOWN - Manual grouping (GPL version doesn't have gantt.groupBy())
+var groupBySelect = document.getElementById('dhtmlx-group-by-select');
+var originalTasksData = null;
+var currentGroupMode = 'none';
+
+if (groupBySelect) {
+    console.log('✅ Group-by dropdown found, attaching listener');
+    
+    groupBySelect.addEventListener('change', function() {
+        var mode = this.value;
+        console.log('🔄 Group by changed to:', mode);
+        
+        if (mode === 'none') {
+            // Clear grouping - restore original data
+            clearManualGrouping();
         } else {
-            clearGrouping();
-            this.classList.remove('active');
-            isGrouped = false;
+            // Apply manual grouping
+            applyManualGrouping(mode);
         }
     });
-}//NEWNEW
+} else {
+    console.warn('⚠️ Group-by dropdown NOT found (#dhtmlx-group-by-select)');
+}
+
+function clearManualGrouping() {
+    console.log('🔄 Clearing grouping...');
+    
+    if (originalTasksData) {
+        gantt.clearAll();
+        gantt.parse(originalTasksData);
+        currentGroupMode = 'none';
+        console.log('✅ Grouping cleared, restored original data');
+    } else {
+        console.log('⚠️ No original data to restore');
+    }
+}
+
+function applyManualGrouping(mode) {
+    console.log('🔄 Applying grouping by:', mode);
+    
+    // Explain what each mode does
+    if (mode === 'assignee') {
+        console.log('   → Groups tasks by who they are assigned to (username)');
+    } else if (mode === 'group') {
+        console.log('   → Groups tasks by the Kanboard User Group of the assignee (e.g., Frontend, Backend, Administrators)');
+    }
+    
+    // Store original data if not already stored
+    if (!originalTasksData || currentGroupMode === 'none') {
+        originalTasksData = gantt.serialize();
+        console.log('💾 Stored original task data:', originalTasksData.data.length, 'tasks');
+    }
+    
+    currentGroupMode = mode;
+    
+    var tasks = gantt.getTaskByTime();
+    console.log('📋 Total tasks to group:', tasks.length);
+    
+    var groups = {};
+    var groupedData = [];
+    var groupIdCounter = 100000; // High number to avoid ID conflicts
+    
+    var defaultLabel = mode === 'assignee' ? 'Unassigned' : 
+                      mode === 'group' ? 'Ungrouped' : 
+                      'No Sprint';
+    
+    // First pass: collect groups
+    var sampleShown = false;
+    tasks.forEach(function(task) {
+        // Skip internal group/project tasks created by previous grouping
+        if (task.type === 'project' && task.id >= 100000) {
+            return;
+        }
+        
+        // Show sample task data once for debugging
+        if (!sampleShown) {
+            console.log('📄 Sample task data:', {
+                id: task.id,
+                text: task.text,
+                assignee: task.assignee,
+                group: task.group,
+                sprint: task.sprint,
+                start_date: task.start_date
+            });
+            sampleShown = true;
+        }
+        
+        var groupKey = task[mode] || defaultLabel;
+        
+        if (!groups[groupKey]) {
+            groups[groupKey] = {
+                id: groupIdCounter++,
+                text: '📁 ' + groupKey,
+                start_date: task.start_date,
+                duration: 0,
+                parent: 0,
+                type: 'project',
+                open: true,
+                readonly: true,
+                tasks: []
+            };
+        }
+        
+        groups[groupKey].tasks.push(task);
+        
+        // Update group start/end dates
+        if (new Date(task.start_date) < new Date(groups[groupKey].start_date)) {
+            groups[groupKey].start_date = task.start_date;
+        }
+    });
+    
+    // ✅ Sort tasks within each group by start_date (earliest first)
+    for (var groupKey in groups) {
+        groups[groupKey].tasks.sort(function(a, b) {
+            return new Date(a.start_date) - new Date(b.start_date);
+        });
+    }
+    
+    // Second pass: build grouped data structure
+    for (var groupKey in groups) {
+        var group = groups[groupKey];
+        groupedData.push({
+            id: group.id,
+            text: group.text,
+            start_date: group.start_date,
+            duration: group.duration,
+            parent: 0,
+            type: 'project',
+            open: true,
+            readonly: true
+        });
+        
+        // Add all tasks under this group
+        group.tasks.forEach(function(task) {
+            groupedData.push({
+                id: task.id,
+                text: task.text,
+                start_date: task.start_date,
+                end_date: task.end_date,
+                duration: task.duration,
+                progress: task.progress,
+                priority: task.priority,
+                color: task.color,
+                parent: group.id, // Set parent to group
+                assignee: task.assignee,
+                group: task.group,
+                sprint: task.sprint,
+                owner_id: task.owner_id,
+                is_milestone: task.is_milestone,
+                type: 'task',
+                open: true
+            });
+        });
+    }
+    
+    console.log('📊 Created', Object.keys(groups).length, 'groups with', tasks.length, 'tasks');
+    
+    // Clear and reload with grouped data
+    gantt.clearAll();
+    gantt.parse({data: groupedData, links: originalTasksData.links || []});
+    
+    console.log('✅ Grouping applied successfully');
+}
+
+/**
+ * ❌ SPRINT GROUPING - REMOVED (Default mode already shows parent-child structure)
+ * Kanboard's internal links naturally create parent-child hierarchy,
+ * so sprint grouping is redundant with the default view.
+ */
+/*
+function applySprintGrouping() {
+    console.log('🎯 Applying sprint-based grouping using Kanboard internal links...');
+    
+    var allTasks = gantt.getTaskByTime();
+    var allLinks = originalTasksData.links || gantt.getLinks() || [];
+    var groupedData = [];
+    var groupIdCounter = 100000;
+    var processedTasks = {};
+    
+    console.log('📊 Found', allLinks.length, 'total links');
+    
+    // Build parent-child map from links
+    // Kanboard link types (need to identify "is a child of" and "is a parent of")
+    var childToParent = {}; // child_id -> parent_id
+    var parentToChildren = {}; // parent_id -> [child_ids]
+    var linkTypeCount = {};
+    
+    // First pass: analyze all link types
+    allLinks.forEach(function(link) {
+        var linkType = link.type || 'unknown';
+        linkTypeCount[linkType] = (linkTypeCount[linkType] || 0) + 1;
+    });
+    
+    console.log('📊 Link types found:', linkTypeCount);
+    
+    // Second pass: process parent-child links only
+    allLinks.forEach(function(link) {
+        var sourceId = parseInt(link.source);
+        var targetId = parseInt(link.target);
+        var linkType = link.type;
+        
+        console.log('  🔗 Link:', sourceId, '→', targetId, 'type:', linkType);
+        
+        // Kanboard link relationships:
+        // "is a child of": source (child) → target (parent)
+        // "is a parent of": source (parent) → target (child)
+        
+        // We need to identify which type value corresponds to these
+        // Let's handle both directions and log them
+        
+        // For "is a child of": source is child, target is parent
+        if (!parentToChildren[targetId]) {
+            parentToChildren[targetId] = [];
+        }
+        if (!parentToChildren[targetId].includes(sourceId)) {
+            parentToChildren[targetId].push(sourceId);
+        }
+        childToParent[sourceId] = targetId;
+        
+        console.log('    → Treating as: Task', sourceId, 'is child of Task', targetId);
+    });
+    
+    console.log('📋 Parent tasks (blocks others):', Object.keys(parentToChildren).length);
+    console.log('📋 Child tasks (blocked by others):', Object.keys(childToParent).length);
+    
+    // Helper: Check if task has children via links
+    function hasChildren(taskId) {
+        return parentToChildren[taskId] && parentToChildren[taskId].length > 0;
+    }
+    
+    // Helper: Get all children of a task via links
+    function getChildren(taskId) {
+        var childIds = parentToChildren[taskId] || [];
+        return allTasks.filter(function(t) {
+            return childIds.indexOf(parseInt(t.id)) !== -1;
+        }).sort(function(a, b) {
+            return new Date(a.start_date) - new Date(b.start_date);
+        });
+    }
+    
+    // Helper: Check if task is a child
+    function isChildTask(taskId) {
+        return childToParent[taskId] !== undefined;
+    }
+    
+    console.log('📊 Analyzing task structure...');
+    var parentCount = 0;
+    var standaloneCount = 0;
+    var childCount = 0;
+    
+    // Process all tasks
+    allTasks.forEach(function(task) {
+        // Skip if already processed (e.g., as a child)
+        if (processedTasks[task.id]) return;
+        
+        // Skip internal group tasks from previous grouping
+        if (task.type === 'project' && task.id >= 100000) return;
+        
+        var taskId = parseInt(task.id);
+        var isChild = isChildTask(taskId);
+        var isParent = hasChildren(taskId);
+        
+        if (isChild) {
+            // Skip child tasks - they'll be processed with their parent
+            childCount++;
+            return;
+        }
+        
+        if (isParent) {
+            // Parent task: Create sprint group
+            parentCount++;
+            var sprintGroupId = groupIdCounter++;
+            
+            // Add sprint header (parent task as group)
+            groupedData.push({
+                id: sprintGroupId,
+                text: '🎯 ' + task.text,
+                start_date: task.start_date,
+                duration: 0,
+                parent: 0,
+                type: 'project',
+                open: true,
+                readonly: true
+            });
+            
+            processedTasks[task.id] = true;
+            
+            // Add all children under this sprint
+            var children = getChildren(taskId);
+            children.forEach(function(child) {
+                groupedData.push({
+                    id: child.id,
+                    text: child.text,
+                    start_date: child.start_date,
+                    end_date: child.end_date,
+                    duration: child.duration,
+                    progress: child.progress,
+                    priority: child.priority,
+                    color: child.color,
+                    parent: sprintGroupId,
+                    assignee: child.assignee,
+                    group: child.group,
+                    sprint: child.sprint,
+                    owner_id: child.owner_id,
+                    is_milestone: child.is_milestone,
+                    type: 'task',
+                    open: true
+                });
+                processedTasks[child.id] = true;
+            });
+            
+            console.log('  📁 Sprint:', task.text, '(' + children.length + ' tasks)');
+            
+        } else {
+            // Standalone task: Just add the task itself (no sprint header)
+            standaloneCount++;
+            
+            groupedData.push({
+                id: task.id,
+                text: task.text,
+                start_date: task.start_date,
+                end_date: task.end_date,
+                duration: task.duration,
+                progress: task.progress,
+                priority: task.priority,
+                color: task.color,
+                parent: 0,  // Top-level
+                assignee: task.assignee,
+                group: task.group,
+                sprint: task.sprint,
+                owner_id: task.owner_id,
+                is_milestone: task.is_milestone,
+                type: 'task',
+                open: true
+            });
+            
+            processedTasks[task.id] = true;
+            console.log('  📌 Standalone task:', task.text);
+        }
+    });
+    
+    console.log('📊 Sprint Summary:');
+    console.log('   • Parent sprints (with children):', parentCount);
+    console.log('   • Standalone sprints:', standaloneCount);
+    console.log('   • Total child tasks:', childCount);
+    console.log('   • Total sprint groups:', parentCount + standaloneCount);
+    
+    // Clear and reload with sprint-grouped data
+    gantt.clearAll();
+    gantt.parse({data: groupedData, links: originalTasksData.links || []});
+    
+    console.log('✅ Sprint grouping applied successfully');
+}
+*/
 
     
     // Expand all button
@@ -1861,7 +2199,10 @@ function changeViewMode(mode) {
 
 
 
-//new
+// ✅ OLD GROUPING FUNCTIONS (DEPRECATED - now using gantt.groupBy() API)
+// These functions are kept for reference but no longer used
+
+/*
 var originalTasks = null; // Store original task data
 
 function groupByAssignee() {
@@ -1967,7 +2308,7 @@ function clearGrouping() {
     
     console.log('Grouping cleared');
 }
-//new
+*/
 
 function updateStatistics() {
     var tasks = gantt.getTaskByTime();
@@ -1988,24 +2329,6 @@ function updateStatistics() {
     if (completedElement) completedElement.textContent = completed;
     if (progressElement) progressElement.textContent = inProgress;
 }
-// ---------------------------
-// Group-by initialization
-// ---------------------------
-function applyInitialGrouping() {
-    if (typeof gantt === 'undefined' || !gantt.groupBy) return;
-  
-    var container = document.getElementById('dhtmlx-gantt-chart');
-    var mode = (container && container.getAttribute('data-group-by')) || 'none';
-  
-    console.log('[Grouping] Applying initial mode:', mode);
-  
-    if (mode === 'none') {
-      gantt.groupBy(false); // clear grouping
-    } else if (mode === 'assignee' || mode === 'group' || mode === 'sprint') {
-      gantt.groupBy({
-        relation_property: mode,  // task.assignee / task.group / task.sprint
-        default_group_label: '—'
-      });
-    }
-  }
+
+// ✅ applyInitialGrouping() removed - now using dropdown-controlled client-side grouping
   

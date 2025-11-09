@@ -166,6 +166,26 @@ class TaskGanttFormatter extends BaseFormatter implements FormatterInterface
         // Override color for milestones to green
         $color = $isMilestone ? '#27ae60' : $this->getTaskColor($task);
         
+        // ✅ Get owner/assignee name
+        $assignee = t('Unassigned');
+        $userGroupName = t('Ungrouped');
+        
+        if (!empty($task['owner_id'])) {
+            $owner = $this->userModel->getById($task['owner_id']);
+            if ($owner) {
+                // Use username or name, prefer username as it's more commonly displayed
+                $assignee = !empty($owner['username']) ? $owner['username'] : $owner['name'];
+                
+                // ✅ Get user's groups (for "Group by Group")
+                $userGroups = $this->groupMemberModel->getGroups($task['owner_id']);
+                if (!empty($userGroups)) {
+                    // Use first group if user belongs to multiple
+                    $groupNames = array_column($userGroups, 'name');
+                    $userGroupName = implode(', ', $groupNames);
+                }
+            }
+        }
+        
         return array(
             'id' => $task['id'],
             'text' => $task['title'],
@@ -177,20 +197,12 @@ class TaskGanttFormatter extends BaseFormatter implements FormatterInterface
             'color' => $color,
             'owner_id' => $task['owner_id'],
         
-            // make sure these exist for grouping:
-            'assignee' => $task['assignee_name']
-                ?? $task['assignee_username']
-                ?? $task['owner_name']
-                ?? $task['owner_username']
-                ?? t('Unassigned'),
-        
-            // If your "Group" should be swimlane instead, use $task['swimlane_name'] here:
-            'group' => $task['category_name'] ?? t('Ungrouped'),
-        
-            // Sprint commonly comes from metadata:
+            // ✅ Grouping fields
+            'assignee' => $assignee,
+            'group' => $userGroupName,  // User's Kanboard group(s), not category
             'sprint' => isset($metadata['sprint']) && $metadata['sprint'] !== '' ? $metadata['sprint'] : t('No Sprint'),
         
-            'column_title' => $task['column_name'],
+            'column_title' => isset($task['column_name']) ? $task['column_name'] : '',
             'category_id' => $task['category_id'],
             'link' => $this->helper->url->href('TaskViewController', 'show', array(
                 'project_id' => $task['project_id'], 
@@ -201,7 +213,7 @@ class TaskGanttFormatter extends BaseFormatter implements FormatterInterface
             'is_milestone' => $isMilestone,
             'open' => true,
         
-            // keep internal-link parent (we’ll still re-parent the top-level task under the group, subtasks stay under their task)
+            // keep internal-link parent (we'll still re-parent the top-level task under the group, subtasks stay under their task)
             'parent' => (int) ($this->resolveParentId((int)$task['id']) ?? 0),
         );        
     }
