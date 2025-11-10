@@ -159,12 +159,24 @@ class TaskGanttFormatter extends BaseFormatter implements FormatterInterface
         $start = $task['date_started'] ?: time();
         $end = $task['date_due'] ?: ($start + 24 * 60 * 60); // Default to 1 day duration
 
-        // Check if task is a milestone
+        // Check task type from metadata
         $metadata = $this->taskMetadataModel->getAll($task['id']);
+        $taskType = isset($metadata['task_type']) ? $metadata['task_type'] : 'task';
         $isMilestone = !empty($metadata['is_milestone']) && $metadata['is_milestone'] === '1';
         
-        // Override color for milestones to green
-        $color = $isMilestone ? '#27ae60' : $this->getTaskColor($task);
+        // If no task_type but is_milestone is set, infer type
+        if ($taskType === 'task' && $isMilestone) {
+            $taskType = 'milestone';
+        }
+        
+        // Override color based on task type
+        if ($taskType === 'sprint') {
+            $color = '#9b59b6'; // Purple for sprints
+        } else if ($taskType === 'milestone' || $isMilestone) {
+            $color = '#27ae60'; // Green for milestones
+        } else {
+            $color = $this->getTaskColor($task); // Default color based on priority/column
+        }
         
         // ✅ Get owner/assignee name
         $assignee = t('Unassigned');
@@ -186,6 +198,12 @@ class TaskGanttFormatter extends BaseFormatter implements FormatterInterface
             }
         }
         
+        // For sprints, pre-compute child task IDs from internal links so the lightbox can preselect them
+        $childTaskIds = array();
+        if ($taskType === 'sprint') {
+            $childTaskIds = $this->getChildrenIds((int)$task['id']);
+        }
+
         return array(
             'id' => $task['id'],
             'text' => $task['title'],
@@ -209,13 +227,52 @@ class TaskGanttFormatter extends BaseFormatter implements FormatterInterface
                 'task_id' => $task['id']
             )),
             'readonly' => $this->isReadonly($task),
-            'type' => 'task',
+            'type' => $taskType === 'sprint' ? 'project' : 'task',
+            'task_type' => $taskType,
             'is_milestone' => $isMilestone,
             'open' => true,
+            'child_tasks' => $childTaskIds,
         
             // keep internal-link parent (we'll still re-parent the top-level task under the group, subtasks stay under their task)
             'parent' => (int) ($this->resolveParentId((int)$task['id']) ?? 0),
         );        
+    }
+
+    /**
+     * Get IDs of children linked to the given task via "is a parent of" / "is a child of"
+     * @param int $taskId
+     * @return array<int>
+     */
+    private function getChildrenIds(int $taskId): array
+    {
+        $children = [];
+        // Case 1: This task is recorded as parent → child
+        $rows = $this->db->table('task_has_links')
+            ->join('links', 'id', 'link_id')
+            ->columns('links.label', 'task_has_links.task_id', 'task_has_links.opposite_task_id')
+            ->eq('task_has_links.task_id', $taskId)
+            ->findAll();
+        foreach ($rows as $r) {
+            $label = $r['label'] ?? ($r['links.label'] ?? '');
+            if ($label === 'is a parent of') {
+                $childId = (int) ($r['opposite_task_id'] ?? ($r['task_has_links.opposite_task_id'] ?? 0));
+                if ($childId > 0) $children[] = $childId;
+            }
+        }
+        // Case 2: Inverse rows: child → this task as parent using "is a child of"
+        $rows = $this->db->table('task_has_links')
+            ->join('links', 'id', 'link_id')
+            ->columns('links.label', 'task_has_links.task_id', 'task_has_links.opposite_task_id')
+            ->eq('task_has_links.opposite_task_id', $taskId)
+            ->findAll();
+        foreach ($rows as $r) {
+            $label = $r['label'] ?? ($r['links.label'] ?? '');
+            if ($label === 'is a child of') {
+                $childId = (int) ($r['task_id'] ?? ($r['task_has_links.task_id'] ?? 0));
+                if ($childId > 0) $children[] = $childId;
+            }
+        }
+        return array_values(array_unique($children));
     }
 
     /**

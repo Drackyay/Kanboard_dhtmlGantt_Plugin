@@ -16,6 +16,67 @@
     display: block !important;
 }
 
+/* Hide Sprint Tasks section by default to avoid flash on Task/Milestone */
+.gantt_cal_light .gantt_cal_lsection:has(+ .gantt_cal_ltext.sprint-tasks-block),
+.gantt_cal_light .gantt_cal_ltext.sprint-tasks-block {
+    display: none !important;
+}
+/* Show Sprint Tasks when lightbox has sprint class */
+.gantt_cal_light.gantt-show-sprint-tasks .gantt_cal_lsection:has(+ .gantt_cal_ltext.sprint-tasks-block),
+.gantt_cal_light.gantt-show-sprint-tasks .gantt_cal_ltext.sprint-tasks-block {
+    display: block !important;
+}
+
+/* Hide Group, Assign To, Priority when type is Milestone (no flash via class) */
+.gantt_cal_light.gantt-type-milestone .gantt_cal_lsection:has(+ .gantt_cal_ltext select[title="group"]),
+.gantt_cal_light.gantt-type-milestone .gantt_cal_ltext:has(select[title="group"]),
+.gantt_cal_light.gantt-type-milestone .gantt_cal_lsection:has(+ .gantt_cal_ltext select[title="assignee"]),
+.gantt_cal_light.gantt-type-milestone .gantt_cal_ltext:has(select[title="assignee"]),
+.gantt_cal_light.gantt-type-milestone .gantt_cal_lsection:has(+ .gantt_cal_ltext select[title="priority"]),
+.gantt_cal_light.gantt-type-milestone .gantt_cal_ltext:has(select[title="priority"]) {
+    display: none !important;
+}
+
+/* Sprint bar styling - Purple like legend */
+.gantt_task_line.sprint-block {
+    background-color: #9b59b6 !important;
+    border-color: #8e44ad !important;
+}
+.gantt_task_line.sprint-block .gantt_task_content {
+    color: #fff !important;
+    font-weight: 600 !important;
+}
+
+/* Lightbox: make all dropdowns the same width */
+.gantt_cal_light .gantt_cal_ltext {
+    width: 100% !important;
+    position: relative; /* anchor absolute dropdown panels */
+    box-sizing: border-box;
+}
+.gantt_cal_light .gantt_cal_ltext select {
+    width: 100% !important;
+    max-width: 100% !important;
+    box-sizing: border-box;
+}
+/* If any dropdown uses a text input trigger (e.g., Sprint Tasks search) */
+.gantt_cal_light .gantt_cal_ltext input[type="text"] {
+    width: 100% !important;
+    max-width: 100% !important;
+    box-sizing: border-box;
+}
+/* Uniform control height across selects, inputs, and textarea (Description) */
+.gantt_cal_light .gantt_cal_ltext select,
+.gantt_cal_light .gantt_cal_ltext input[type="text"],
+.gantt_cal_light .gantt_cal_ltext textarea {
+    height: 32px !important;
+    line-height: 32px !important; /* center single-line text vertically */
+    padding: 0 8px !important; /* remove vertical padding to keep text centered */
+    box-sizing: border-box !important;
+    resize: none !important; /* keep same visual height as other dropdowns */
+    width: 100% !important; /* ensure the same width as selects */
+    max-width: 100% !important;
+}
+
 /* ✅ RESPONSIVE LAYOUT: Full viewport height management */
 #main {
     display: flex !important;

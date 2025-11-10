@@ -482,6 +482,8 @@ function initDhtmlxGantt() {
         // Milestone takes priority over other styling
         if (task.is_milestone) {
             className += "milestone-block ";
+        } else if (task.task_type === 'sprint' || task.type === 'project') {
+            className += "sprint-block ";
         } else if (task.priority) {
             className += "dhtmlx-priority-" + task.priority + " ";
         }
@@ -543,11 +545,13 @@ function initDhtmlxGantt() {
     // new code for lightbox + link to kb
     // Configure lightbox sections to add "View in Kanboard" button
 gantt.config.lightbox.sections = [
-    {name: "type", height: 22, map_to: "is_milestone", type: "select", options: [
-        {key: false, label: "Task"},
-        {key: true, label: "Milestone"}
+    {name: "type", height: 22, map_to: "task_type", type: "select", options: [
+        {key: "task", label: "Task"},
+        {key: "milestone", label: "Milestone"},
+        {key: "sprint", label: "Sprint"}
     ]},
     {name: "description", height: 38, map_to: "text", type: "textarea", focus: true},
+    {name: "tasks", height: 22, map_to: "child_tasks", type: "template"},
     {name: "group", height: 22, map_to: "group_id", type: "select", options: []},
     {name: "assignee", height: 22, map_to: "owner_id", type: "select", options: []},
     {name: "priority", height: 22, map_to: "priority", type: "select", options: [
@@ -562,6 +566,7 @@ gantt.config.lightbox.sections = [
 
 // Custom labels for lightbox sections
 gantt.locale.labels.section_type = "Type";
+gantt.locale.labels.section_tasks = "Tasks";
 gantt.locale.labels.section_group = "Group/Sprint";
 gantt.locale.labels.section_assignee = "Assign To";
 gantt.locale.labels.section_kanboard_link = "Quick Actions";
@@ -592,14 +597,20 @@ gantt.attachEvent("onBeforeLightbox", function(id) {
         task.group_id = 0;
     }
     
-    // Always use type "task" for rendering (rectangular bars)
-    task.type = "task";
+    // Set task_type based on existing properties
+    if (!task.task_type) {
+        if (task.is_milestone) {
+            task.task_type = 'milestone';
+        } else if (task.type === 'project') {
+            task.task_type = 'sprint';
+        } else {
+            task.task_type = 'task';
+        }
+    }
     
-    // Ensure is_milestone is properly set (convert 1/0 or "1"/"0" to boolean)
-    if (task.is_milestone === 1 || task.is_milestone === "1" || task.is_milestone === true) {
-        task.is_milestone = true;
-    } else if (task.is_milestone === undefined || task.is_milestone === null) {
-        task.is_milestone = false;
+    // Set child_tasks array if not exists
+    if (!task.child_tasks) {
+        task.child_tasks = [];
     }
     
     // Store isNewTask flag for later use
@@ -615,6 +626,18 @@ gantt.attachEvent("onBeforeLightbox", function(id) {
             } else {
                 lightbox.classList.remove('gantt-new-task');
                 console.log('Removed gantt-new-task class for existing task');
+            }
+            // Control Sprint Tasks visibility via CSS to avoid flash
+            if (task.task_type === 'sprint') {
+                lightbox.classList.add('gantt-show-sprint-tasks');
+            } else {
+                lightbox.classList.remove('gantt-show-sprint-tasks');
+            }
+            // Control Milestone visibility (hide group/assignee/priority) via CSS to avoid flash
+            if (task.task_type === 'milestone' || task.is_milestone === true) {
+                lightbox.classList.add('gantt-type-milestone');
+            } else {
+                lightbox.classList.remove('gantt-type-milestone');
             }
         }
     }, 0); // Use 0 delay for immediate execution
@@ -692,42 +715,55 @@ function setupLightboxFieldToggle(retryCount) {
     // Remove any existing listeners by cloning
     var newTypeSelect = typeSelect.cloneNode(true);
     
-    // Set the value on the CLONED element
-    if (shouldBeMilestone) {
-        newTypeSelect.value = 'true';
-        console.log('Set type select to Milestone for task:', taskId);
-    } else {
-        newTypeSelect.value = 'false';
-        console.log('Set type select to Task for task:', taskId);
-    }
+    // Set the value on the CLONED element based on task properties
+    var taskType = task ? (task.task_type || (task.is_milestone ? 'milestone' : 'task')) : 'task';
+    newTypeSelect.value = taskType;
+    console.log('Set type select to:', taskType, 'for task:', taskId);
     
     typeSelect.parentNode.replaceChild(newTypeSelect, typeSelect);
     typeSelect = newTypeSelect;
     
     // Function to toggle fields based on type
     var toggleFields = function() {
-        // Select dropdown value can be string "true"/"false" or boolean
-        var isMilestone = typeSelect.value === 'true' || typeSelect.value === true || typeSelect.value === 'milestone';
+        var selectedType = typeSelect.value; // "task", "milestone", or "sprint"
         
-        console.log('Toggling fields, isMilestone:', isMilestone, 'value:', typeSelect.value, 'type:', typeof typeSelect.value);
+        console.log('Toggling fields, type:', selectedType);
         
         // Scope to the lightbox markup
         var lightbox = document.querySelector('.gantt_cal_light');
         if (!lightbox) return;
 
-        // Hide/show Priority section (select with title="priority")
-        var prioritySelect = lightbox.querySelector('select[title="priority"]');
-        if (prioritySelect) {
-            var prContent = prioritySelect.closest('.gantt_cal_ltext') || prioritySelect.parentElement;
-            var prLabel = prContent && prContent.previousElementSibling && prContent.previousElementSibling.classList && prContent.previousElementSibling.classList.contains('gantt_cal_lsection') ? prContent.previousElementSibling : null;
-            if (prContent) prContent.style.display = isMilestone ? 'none' : '';
-            if (prLabel) prLabel.style.display = isMilestone ? 'none' : '';
-            console.log('Priority section hidden:', isMilestone, 'content:', !!prContent, 'label:', !!prLabel);
+        // Find all sections
+        var allLabels = lightbox.querySelectorAll('.gantt_cal_lsection');
+        
+        // Hide/show Priority (hidden for Milestone and Sprint)
+        var hidePriority = (selectedType === 'milestone' || selectedType === 'sprint');
+        for (var i = 0; i < allLabels.length; i++) {
+            if (allLabels[i].textContent.trim() === 'Priority') {
+                var prLabel = allLabels[i];
+                var prContent = prLabel.nextElementSibling;
+                if (prLabel) prLabel.style.display = hidePriority ? 'none' : '';
+                if (prContent) prContent.style.display = hidePriority ? 'none' : '';
+                console.log('Priority hidden:', hidePriority);
+                break;
+            }
+        }
+        
+        // Control Tasks section with a class to avoid flash
+        if (selectedType === 'sprint') {
+            lightbox.classList.add('gantt-show-sprint-tasks');
         } else {
-            console.log('Priority select not found');
+            lightbox.classList.remove('gantt-show-sprint-tasks');
+        }
+        // Toggle milestone class to hide group/assignee/priority without flicker
+        if (selectedType === 'milestone') {
+            lightbox.classList.add('gantt-type-milestone');
+        } else {
+            lightbox.classList.remove('gantt-type-milestone');
         }
 
-        // Hide/show only the duration numeric input (keep start date selects visible)
+        // Hide duration input for Milestone (keep visible for Task and Sprint)
+        var hideDuration = (selectedType === 'milestone');
         var durationCandidates = lightbox.querySelectorAll(
             '.gantt_time input[type="number"],\
              .gantt_time input[aria-label="Duration"],\
@@ -735,11 +771,10 @@ function setupLightboxFieldToggle(retryCount) {
              .gantt_time .gantt_duration input,\
              .gantt_time .gantt_duration_value'
         );
-        console.log('Duration numeric inputs found:', durationCandidates.length);
         durationCandidates.forEach(function(inp){
-            if (inp && inp.style) inp.style.display = isMilestone ? 'none' : '';
+            if (inp && inp.style) inp.style.display = hideDuration ? 'none' : '';
             var wrap = inp.closest('.gantt_duration, .gantt_duration_line, .gantt_time_duration');
-            if (wrap && wrap !== lightbox) wrap.style.display = isMilestone ? 'none' : '';
+            if (wrap && wrap !== lightbox) wrap.style.display = hideDuration ? 'none' : '';
         });
     };
     
@@ -880,37 +915,45 @@ function setupCascadingAssignmentDropdowns(retryCount) {
     groupSelect.addEventListener('change', filterAssignees);
 }
 
-// Handle milestone save to keep type as task and apply green color
+// Handle task/milestone/sprint save
 gantt.attachEvent("onLightboxSave", function(id, task, is_new) {
     console.log('Lightbox save, task:', task);
-    console.log('Task owner_id:', task.owner_id, 'group_id:', task.group_id, 'is_milestone:', task.is_milestone);
+    console.log('Task type:', task.task_type, 'owner_id:', task.owner_id, 'child_tasks:', task.child_tasks);
     
     // Ensure owner_id is properly set (convert string to integer if needed)
     if (task.owner_id !== undefined && task.owner_id !== null) {
         task.owner_id = parseInt(task.owner_id) || 0;
-        console.log('Converted owner_id to:', task.owner_id);
     }
     
-    // Validation: Task must be assigned to someone (cannot be Unassigned)
-    if (!task.owner_id || task.owner_id === 0) {
+    // Validation: Only regular tasks must be assigned. Milestones and Sprints can be unassigned.
+    if (task.task_type === 'task' && (!task.owner_id || task.owner_id === 0)) {
         alert('Error: Task must be assigned to a user. Please select someone from the "Assign To" dropdown.');
         console.error('Validation failed: Task must be assigned to a user');
         return false; // Prevent saving
     }
     
-    // Always keep type as "task" for rectangular bars
-    task.type = "task";
+    // Validation: Sprints must have at least one child task
+    if (task.task_type === 'sprint' && (!task.child_tasks || task.child_tasks.length === 0)) {
+        alert('Error: Sprint must contain at least one task. Please select tasks from the "Tasks" dropdown.');
+        console.error('Validation failed: Sprint must contain at least one task');
+        return false; // Prevent saving
+    }
     
-    // Convert is_milestone to proper boolean/string format
-    // DHtmlX select returns the key value (true/false as boolean, or "true"/"false" as string)
-    if (task.is_milestone === true || task.is_milestone === "true" || task.is_milestone === 1 || task.is_milestone === "1") {
-        task.is_milestone = true;
-        task.color = "#27ae60";
-        console.log('Set milestone color to green for task:', id);
-    } else {
+    // Set display type and color based on task_type
+    if (task.task_type === 'sprint') {
+        task.type = "project"; // DHtmlX displays this as a parent bar
+        task.color = "#9b59b6"; // Purple color for sprints
         task.is_milestone = false;
-        // Reset color if changed from milestone to task (let server/priority determine color)
-        console.log('Task is not a milestone, keeping original color');
+        console.log('Set Sprint with purple color');
+    } else if (task.task_type === 'milestone') {
+        task.type = "task";
+        task.color = "#27ae60"; // Green for milestones
+        task.is_milestone = true;
+        console.log('Set Milestone with green color');
+    } else {
+        task.type = "task";
+        task.is_milestone = false;
+        console.log('Set regular Task');
     }
     
     return true; // Allow saving
@@ -918,10 +961,208 @@ gantt.attachEvent("onLightboxSave", function(id, task, is_new) {
 
 gantt.form_blocks["template"] = {
     render: function(sns) {
-        return "<div class='dhtmlx_cal_ltext' style='height:" + sns.height + "px;'></div>";
+        return "<div class='gantt_cal_ltext' style='height:" + sns.height + "px;'></div>";
     },
     set_value: function(node, value, task, section) {
         var projectId = document.getElementById('dhtmlx-gantt-chart').getAttribute('data-project-id');
+        
+        // Handle Tasks multi-select (for Sprints)
+        if (section.name === 'tasks') {
+            node.innerHTML = '';
+            // mark this content node so CSS can target it (hide/show without flash)
+            node.classList.add('sprint-tasks-block');
+            
+            // Get all tasks in the project
+            var allTasks = gantt.getTaskByTime();
+            var currentTaskId = task.id;
+            var selectedTasks = task.child_tasks || [];
+            // expose selection to get_value
+            node._selectedTasks = Array.isArray(selectedTasks) ? selectedTasks.slice() : [];
+            
+            // Create container
+            var container = document.createElement('div');
+            container.style.cssText = 'position: relative; width: 100%;';
+            
+            // Create search input as the main dropdown trigger
+            var searchInput = document.createElement('input');
+            searchInput.type = 'text';
+            searchInput.placeholder = 'Search and select tasks...';
+            searchInput.style.cssText = 'width: 100%; padding: 6px; border: 1px solid #ccc; box-sizing: border-box; background: white;';
+            
+            // Create dropdown panel (hidden by default)
+            var dropdownPanel = document.createElement('div');
+            dropdownPanel.style.cssText = 'display: none; position: absolute; left: 0; right: 0; width: 100%; max-height: 200px; overflow-y: auto; border: 1px solid #ccc; border-top: 1px solid #ddd; background: white; z-index: 1000; box-shadow: 0 2px 8px rgba(0,0,0,0.15);';
+            
+            // Store task items for filtering
+            var taskItems = [];
+            var taskMap = {};
+            
+            if (allTasks.length === 0) {
+                dropdownPanel.innerHTML = '<p style="color: #999; padding: 10px; margin: 0;">No tasks available</p>';
+            } else {
+                allTasks.forEach(function(t) {
+                    // Don't include the current task itself or other sprints
+                    if (t.id === currentTaskId || t.task_type === 'sprint') return;
+                    
+                    taskMap[t.id] = t;
+                    
+                    var option = document.createElement('div');
+                    option.style.cssText = 'padding: 8px 12px; cursor: pointer; border-bottom: 1px solid #f0f0f0;';
+                    option.textContent = t.text + ' (' + (t.assignee || 'Unassigned') + ')';
+                    option.dataset.taskId = t.id;
+                    option.dataset.taskText = t.text.toLowerCase();
+                    option.dataset.taskAssignee = (t.assignee || 'unassigned').toLowerCase();
+                    
+                    if (selectedTasks.indexOf(t.id) !== -1) {
+                        option.style.backgroundColor = '#e3f2fd';
+                        option.style.fontWeight = 'bold';
+                    }
+                    
+                    option.addEventListener('click', function() {
+                        var taskId = parseInt(this.dataset.taskId);
+                        var idx = selectedTasks.indexOf(taskId);
+                        
+                        if (idx === -1) {
+                            // Add to selection
+                            selectedTasks.push(taskId);
+                            this.style.backgroundColor = '#e3f2fd';
+                            this.style.fontWeight = 'bold';
+                        } else {
+                            // Remove from selection
+                            selectedTasks.splice(idx, 1);
+                            this.style.backgroundColor = 'transparent';
+                            this.style.fontWeight = 'normal';
+                        }
+                        
+                        // sync for get_value
+                        node._selectedTasks = selectedTasks.slice();
+                        updateSelectedDisplay();
+                    });
+                    
+                    option.addEventListener('mouseover', function() {
+                        if (selectedTasks.indexOf(parseInt(this.dataset.taskId)) === -1) {
+                            this.style.backgroundColor = '#f8f9fa';
+                        }
+                    });
+                    
+                    option.addEventListener('mouseout', function() {
+                        if (selectedTasks.indexOf(parseInt(this.dataset.taskId)) === -1) {
+                            this.style.backgroundColor = 'transparent';
+                        }
+                    });
+                    
+                    dropdownPanel.appendChild(option);
+                    taskItems.push(option);
+                });
+            }
+            
+            // Open dropdown when search input is focused or clicked
+            searchInput.addEventListener('focus', function() {
+                dropdownPanel.style.display = 'block';
+            });
+            
+            searchInput.addEventListener('click', function(e) {
+                e.stopPropagation();
+                dropdownPanel.style.display = 'block';
+            });
+            
+            // Search functionality - filters as you type
+            searchInput.addEventListener('input', function() {
+                dropdownPanel.style.display = 'block'; // Open when typing
+                var searchTerm = this.value.toLowerCase();
+                taskItems.forEach(function(item) {
+                    var taskText = item.dataset.taskText || '';
+                    var taskAssignee = item.dataset.taskAssignee || '';
+                    var matches = taskText.indexOf(searchTerm) !== -1 || taskAssignee.indexOf(searchTerm) !== -1;
+                    item.style.display = matches ? '' : 'none';
+                });
+            });
+            
+            // Close dropdown when clicking outside
+            document.addEventListener('click', function(e) {
+                if (!container.contains(e.target)) {
+                    dropdownPanel.style.display = 'none';
+                }
+            });
+            
+            // Selected tasks display (badges)
+            var selectedDisplay = document.createElement('div');
+            selectedDisplay.style.cssText = 'margin-top: 8px;';
+            
+            function updateSelectedDisplay() {
+                selectedDisplay.innerHTML = '';
+                // ensure current selection is available to get_value
+                node._selectedTasks = selectedTasks.slice();
+                
+                // Find the parent row and lightbox for height adjustment
+                var parentRow = node.closest('.gantt_cal_light_wide');
+                
+                if (selectedTasks.length === 0) {
+                    selectedDisplay.style.display = 'none';
+                    // Reset to normal height
+                    if (parentRow) {
+                        parentRow.style.height = 'auto';
+                    }
+                    node.style.height = '32px';
+                } else {
+                    selectedDisplay.style.display = 'block';
+                    // Calculate needed height for badges
+                    var badgeRows = Math.ceil(selectedTasks.length / 3);
+                    var neededHeight = 32 + 8 + (badgeRows * 28); // input + gap + badges
+                    
+                    node.style.height = neededHeight + 'px';
+                    if (parentRow) {
+                        parentRow.style.height = 'auto';
+                    }
+                    
+                    selectedTasks.forEach(function(taskId) {
+                        var t = taskMap[taskId];
+                        if (!t) return;
+                        
+                        var badge = document.createElement('span');
+                        badge.style.cssText = 'display: inline-block; background: #2196F3; color: white; padding: 4px 8px; margin: 2px; border-radius: 3px; font-size: 12px;';
+                        badge.textContent = t.text;
+                        
+                        var removeBtn = document.createElement('span');
+                        removeBtn.textContent = ' ×';
+                        removeBtn.style.cssText = 'margin-left: 4px; cursor: pointer; font-weight: bold;';
+                        removeBtn.addEventListener('click', function(e) {
+                            e.stopPropagation();
+                            var idx = selectedTasks.indexOf(taskId);
+                            if (idx !== -1) {
+                                selectedTasks.splice(idx, 1);
+                                // sync for get_value
+                                node._selectedTasks = selectedTasks.slice();
+                                updateSelectedDisplay();
+                                // Update option styling
+                                taskItems.forEach(function(item) {
+                                    if (parseInt(item.dataset.taskId) === taskId) {
+                                        item.style.backgroundColor = 'transparent';
+                                        item.style.fontWeight = 'normal';
+                                    }
+                                });
+                            }
+                        });
+                        
+                        badge.appendChild(removeBtn);
+                        selectedDisplay.appendChild(badge);
+                    });
+                }
+            }
+            
+            container.appendChild(searchInput);
+            container.appendChild(dropdownPanel);
+            container.appendChild(selectedDisplay);
+            
+            node.appendChild(container);
+            
+            // Initialize selected display
+            updateSelectedDisplay();
+            
+            return;
+        }
+        
+        // Handle Kanboard link button
         var taskId = task.id;
         
         // Build the Kanboard task view URL
@@ -948,6 +1189,13 @@ gantt.form_blocks["template"] = {
         node.appendChild(button);
     },
     get_value: function(node, task, section) {
+        // Handle Tasks multi-select value retrieval
+        if (section.name === 'tasks') {
+            // Read the live selection stored by set_value
+            var selected = node && Array.isArray(node._selectedTasks) ? node._selectedTasks : [];
+            // ensure integers
+            return selected.map(function(v){ return parseInt(v, 10); }).filter(function(v){ return !isNaN(v); });
+        }
         return task[section.map_to];
     },
     focus: function(node) {
@@ -1279,7 +1527,7 @@ function smartFitToScreen() {
 }
 //new
 
-  
+
 function setupGanttEventHandlers() {
     // Bind once guard
     if (window.__ganttHandlersBound) {
@@ -1353,6 +1601,8 @@ function setupGanttEventHandlers() {
                     end_date: formattedEndDate,
                     priority: task.priority || 'normal',
                     owner_id: task.owner_id || 0,
+                    task_type: task.task_type || 'task',
+                    child_tasks: task.child_tasks || [],
                     is_milestone: task.is_milestone ? 1 : 0
                 })
             })
@@ -1394,6 +1644,9 @@ function setupGanttEventHandlers() {
                 start_date: gantt.date.date_to_str(gantt.config.date_format)(task.start_date),
                 end_date: gantt.date.date_to_str(gantt.config.date_format)(task.end_date),
                 priority: task.priority,
+                owner_id: task.owner_id || 0,
+                task_type: task.task_type || 'task',
+                child_tasks: task.child_tasks || [],
                 is_milestone: task.is_milestone ? 1 : 0
             };
             
@@ -1429,12 +1682,12 @@ function setupGanttEventHandlers() {
                 })
                 .then(response => response.json())
                 .then(data => {
-                    if (data.result !== 'ok') {
-                        console.error('Failed to save task:', data.message);
-                    }
-                })
-                .catch(error => {
-                    console.error('Error saving task:', error);
+                if (data.result !== 'ok') {
+                    console.error('Failed to save task:', data.message);
+                }
+            })
+            .catch(error => {
+                console.error('Error saving task:', error);
                 });
             }
             
@@ -1628,11 +1881,11 @@ function setupGanttEventHandlers() {
             });
         });
         
-    console.log('Event-based data handling initialized successfully');
-    
-} else {
-    console.warn('No ganttUrls found, data processor not initialized');
-}
+        console.log('Event-based data handling initialized successfully');
+        
+    } else {
+        console.warn('No ganttUrls found, data processor not initialized');
+    }
 
 /**
  * ✅ DYNAMIC DATA RELOAD FUNCTION
@@ -1694,7 +1947,7 @@ function fallbackRefresh() {
     console.log('Using fallback refresh - reloading page...');
     // As last resort, reload the entire page to get fresh data
     window.location.reload();
-}
+    }
     
     // Toolbar event handlers
     var addTaskBtn = document.getElementById('dhtmlx-add-task');
@@ -1769,6 +2022,8 @@ if (groupBySelect) {
         if (mode === 'none') {
             // Clear grouping - restore original data
             clearManualGrouping();
+        } else if (mode === 'sprint') {
+            applySprintOnlyView();
         } else {
             // Apply manual grouping
             applyManualGrouping(mode);
@@ -1916,6 +2171,86 @@ function applyManualGrouping(mode) {
     gantt.parse({data: groupedData, links: originalTasksData.links || []});
     
     console.log('✅ Grouping applied successfully');
+}
+
+/**
+ * Show only Sprints and their direct children (using existing parent relations)
+ */
+function applySprintOnlyView() {
+    console.log('🔄 Applying Sprint-only view (sprints + direct children)');
+    if (!originalTasksData || currentGroupMode === 'none') {
+        originalTasksData = gantt.serialize();
+        console.log('💾 Stored original task data:', originalTasksData.data.length, 'tasks');
+    }
+    currentGroupMode = 'sprint';
+    
+    var tasks = gantt.getTaskByTime();
+    var idToTask = {};
+    tasks.forEach(function(t){ idToTask[t.id] = t; });
+    
+    var data = [];
+    var include = {};
+    
+    // First: include all sprint tasks
+    tasks.forEach(function(t){
+        if (t.task_type === 'sprint' || t.type === 'project') {
+            include[t.id] = true;
+            // keep sprint bars as-is
+            data.push({
+                id: t.id,
+                text: t.text,
+                start_date: t.start_date,
+                end_date: t.end_date,
+                duration: t.duration,
+                progress: t.progress,
+                priority: t.priority,
+                color: t.color,
+                owner_id: t.owner_id,
+                assignee: t.assignee,
+                group: t.group,
+                sprint: t.sprint,
+                is_milestone: t.is_milestone,
+                type: 'project',
+                parent: 0,
+                open: true
+            });
+        }
+    });
+    
+    // Second: attach direct children under each sprint
+    tasks.forEach(function(t){
+        if (t.parent && include[t.parent]) {
+            include[t.id] = true;
+            data.push({
+                id: t.id,
+                text: t.text,
+                start_date: t.start_date,
+                end_date: t.end_date,
+                duration: t.duration,
+                progress: t.progress,
+                priority: t.priority,
+                color: t.color,
+                owner_id: t.owner_id,
+                assignee: t.assignee,
+                group: t.group,
+                sprint: t.sprint,
+                is_milestone: t.is_milestone,
+                type: 'task',
+                parent: t.parent,
+                open: true
+            });
+        }
+    });
+    
+    // Filter links to included tasks only
+    var links = (gantt.getLinks() || []).filter(function(l){
+        return include[l.source] && include[l.target];
+    });
+    
+    // Reload chart
+    gantt.clearAll();
+    gantt.parse({ data: data, links: links });
+    console.log('✅ Sprint-only view applied:', data.length, 'tasks');
 }
 
 /**

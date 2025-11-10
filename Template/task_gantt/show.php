@@ -69,6 +69,7 @@
                     <option value="none"><?= t('None') ?></option>
                     <option value="assignee"><?= t('Assignee') ?></option>
                     <option value="group"><?= t('User Group') ?></option>
+                    <option value="sprint"><?= t('Sprint') ?></option>
                 </select>
             </label>
 
@@ -152,6 +153,10 @@
                     <div class="dhtmlx-legend-item">
                         <span class="dhtmlx-legend-color" style="background: #27ae60;"></span>
                         <span><?= t('Milestone') ?></span>
+                    </div>
+                    <div class="dhtmlx-legend-item">
+                        <span class="dhtmlx-legend-color" style="background: #9b59b6;"></span>
+                        <span><?= t('Sprint') ?></span>
                     </div>
                 </div>
             </div>

@@ -191,7 +191,30 @@ class TaskGanttController extends BaseController
         ));
 
         if ($task_id) {
-            // Save milestone status if provided
+            // Save task_type in metadata
+            if (isset($data['task_type'])) {
+                $taskType = $data['task_type'];
+                error_log('DHtmlX Gantt Create - Setting task_type to: ' . $taskType . ' for task: ' . $task_id);
+                $this->taskMetadataModel->save($task_id, array('task_type' => $taskType));
+                
+                // If Sprint, create parent-child links
+                if ($taskType === 'sprint' && isset($data['child_tasks']) && is_array($data['child_tasks'])) {
+                    $parentLinkId = $this->getLinkIdByLabel('is a parent of');
+                    
+                    if ($parentLinkId) {
+                        foreach ($data['child_tasks'] as $childTaskId) {
+                            $childId = (int) $childTaskId;
+                            if ($childId > 0) {
+                                // Create link: sprint (parent) -> child task
+                                $this->taskLinkModel->create($task_id, $childId, $parentLinkId);
+                                error_log('DHtmlX Gantt Create - Created parent link from Sprint ' . $task_id . ' to task ' . $childId);
+                            }
+                        }
+                    }
+                }
+            }
+            
+            // Save milestone status if provided (for backward compatibility)
             if (isset($data['is_milestone'])) {
                 $isMilestone = $data['is_milestone'] ? '1' : '0';
                 error_log('DHtmlX Gantt Create - Setting milestone status to: ' . $isMilestone . ' for task: ' . $task_id);
