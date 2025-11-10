@@ -3,7 +3,7 @@
 //  */
 
 // document.addEventListener('DOMContentLoaded', function() {
-//     console.log('DOM loaded, initializing DHtmlX Gantt...');
+//     console.log('DOM loaded, initializing DHtmlX Gantt...')
     
 //     // Initialize DHtmlX Gantt
 //     var initialized = initDhtmlxGantt();
@@ -1452,6 +1452,10 @@ function loadGanttData(data) {
     });
     
     updateStatistics();
+    // ✅ Auto-adjust parent durations after parsing data
+    setTimeout(function() {
+        recalcAllParentDurations();
+    }, 100);
 }
 
 
@@ -1626,42 +1630,79 @@ function setupGanttEventHandlers() {
         var tasksToSave = {};
         var saveTimeout = null;
         
-        // Handle task updates - batch updates to avoid interfering with auto-scheduling
         gantt.attachEvent("onAfterTaskUpdate", function(id, task) {
             console.log('Task updated:', id, task.text);
-            
-            // Apply green color if milestone
+        
+            // If this is a parent task, do NOT allow it to be shorter than its children.
+            var childIds = gantt.getChildren(id);
+            if (childIds && childIds.length > 0) {
+                var minChildStart = null;
+                var maxChildEnd = null;
+        
+                childIds.forEach(function(cid) {
+                    var c = gantt.getTask(cid);
+                    if (!minChildStart || c.start_date < minChildStart) minChildStart = c.start_date;
+                    var cEnd = c.end_date || gantt.calculateEndDate(c.start_date, c.duration);
+                    if (!maxChildEnd || cEnd > maxChildEnd) maxChildEnd = cEnd;
+                });
+        
+                // Detect invalid shrink: parent starts after earliest child OR ends before latest child
+                var invalid =
+                    (minChildStart && task.start_date > minChildStart) ||
+                    (maxChildEnd   && task.end_date   < maxChildEnd);
+        
+                if (invalid) {
+                    // Toast + revert visually to span children; DO NOT save to backend
+                    if (window.singleToast) {
+                        window.singleToast("Parent cannot be shorter than its child tasks.");
+                    } else if (gantt.message) {
+                        gantt.message({ type: "warning", text: "Parent cannot be shorter than its child tasks.", expire: 1500 });
+                    }
+        
+                    // Snap parent back to fully cover children
+                    if (minChildStart) task.start_date = new Date(minChildStart);
+                    if (maxChildEnd)   task.end_date   = new Date(maxChildEnd);
+                    task.duration = gantt.calculateDuration(task.start_date, task.end_date);
+        
+                    gantt.refreshTask(id);
+                    // IMPORTANT: skip enqueueing save for this task
+                    return true; // exit handler early
+                }
+            }
+        
+            // Keep your milestone color tweak
             if (task.is_milestone) {
                 task.color = "#27ae60";
-                gantt.refreshTask(id); // Force re-render with new color
+                gantt.refreshTask(id);
             }
-            
-            // Add task to save queue instead of saving immediately
-            // ✅ Format dates as strings to preserve exact time
+        
+            // If this task has a parent, recalc that parent’s span (unchanged behavior)
+            if (task.parent) {
+                console.log('Refreshing parent after child update:', task.parent);
+                recalcParentDuration(task);
+                gantt.refreshTask(task.parent, true);
+            }
+        
+            // Queue save to backend (unchanged)
             tasksToSave[id] = {
                 id: id,
                 text: task.text,
                 start_date: gantt.date.date_to_str(gantt.config.date_format)(task.start_date),
-                end_date: gantt.date.date_to_str(gantt.config.date_format)(task.end_date),
+                end_date:   gantt.date.date_to_str(gantt.config.date_format)(task.end_date),
                 priority: task.priority,
                 owner_id: task.owner_id || 0,
                 task_type: task.task_type || 'task',
                 child_tasks: task.child_tasks || [],
                 is_milestone: task.is_milestone ? 1 : 0
             };
-            
-            console.log('  📅 Queued task times:', {
-                id: id,
-                start: tasksToSave[id].start_date,
-                end: tasksToSave[id].end_date
-            });
-            
-            // Debounce: wait for auto-scheduling to complete before saving
+        
             clearTimeout(saveTimeout);
             saveTimeout = setTimeout(function() {
                 saveQueuedTasks();
-            }, 500); // Wait 500ms for auto-scheduling to finish
+            }, 500);
         });
+        
+
         
         // Save all queued tasks at once
         function saveQueuedTasks() {
@@ -1886,6 +1927,70 @@ function setupGanttEventHandlers() {
     } else {
         console.warn('No ganttUrls found, data processor not initialized');
     }
+    
+    /**
+     * Adjust parent task start/end locally based on all its children
+     */
+    function recalcParentDuration(childTask) {
+        if (!childTask || !childTask.parent) return;
+
+        var parentId = childTask.parent;
+        var parent = gantt.getTask(parentId);
+        if (!parent) return;
+
+        // Gather all direct children of the parent
+        var children = gantt.getChildren(parentId).map(function(id) {
+            return gantt.getTask(id);
+        });
+
+        if (children.length === 0) return;
+
+        // Compute earliest start and latest end among children
+        var minStart = children[0].start_date;
+        var maxEnd = children[0].end_date;
+        for (var i = 1; i < children.length; i++) {
+            var c = children[i];
+            if (c.start_date < minStart) minStart = c.start_date;
+            if (c.end_date > maxEnd) maxEnd = c.end_date;
+        }
+
+        // Update parent start/end based on new bounds (both directions)
+        var changed = false;
+        if (+minStart !== +parent.start_date) {
+            parent.start_date = new Date(minStart);
+            changed = true;
+        }
+        if (+maxEnd !== +parent.end_date) {
+            parent.end_date = new Date(maxEnd);
+            changed = true;
+        }
+
+        if (changed) {
+            console.log('🧮 Parent recalculated:', parent.text, {
+                newStart: parent.start_date,
+                newEnd: parent.end_date
+            });
+            gantt.refreshTask(parentId);
+            gantt.updateTask(parentId);
+        }
+    }
+
+    /**
+     * Recalculate all parent task durations after data load
+     * Ensures proper parent start/end on initial render (no manual interaction needed)
+     */
+    function recalcAllParentDurations() {
+        console.log('🔄 Running initial parent-child recalculation...');
+        gantt.eachTask(function(task) {
+            if (task.parent) {
+                recalcParentDuration(task);
+            }
+        });
+        gantt.render();
+        console.log('✅ Parent-child durations synced after load');
+    }
+
+
 
 /**
  * ✅ DYNAMIC DATA RELOAD FUNCTION

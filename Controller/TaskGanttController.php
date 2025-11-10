@@ -135,12 +135,25 @@ class TaskGanttController extends BaseController
             error_log('DHtmlX Gantt Save - Setting milestone status to: ' . $isMilestone);
             $this->taskMetadataModel->save($task_id, array('is_milestone' => $isMilestone));
         }
+        
+        // ✅ Handle group and sprint updates from Gantt (if present)
+        if (isset($changes['group_id'])) {
+            $this->taskMetadataModel->save($task_id, array('group_id' => (int)$changes['group_id']));
+        }
+        if (isset($changes['sprint_id'])) {
+            $this->taskMetadataModel->save($task_id, array('sprint_id' => (int)$changes['sprint_id']));
+        }
 
+        
         // Always try to update if we have values (at minimum we have the ID)
         if (count($values) > 1) {
             error_log('DHtmlX Gantt Save - Updating task ' . $task_id . ' with values: ' . json_encode($values));
             
             $result = $this->taskModificationModel->update($values);
+           
+            if ($result) {
+                $this->adjustParentDuration($task_id);  // Automatically extend parent if needed
+            }
 
             if (! $result) {
                 error_log('DHtmlX Gantt Save - Failed to update task ' . $task_id);
@@ -381,6 +394,78 @@ class TaskGanttController extends BaseController
             $this->response->json(array('result' => 'error', 'message' => 'Server error: ' . $e->getMessage()), 500);
         }
     }
+
+    /**
+     * Automatically adjust parent duration when a child is extended.
+     */
+    private function adjustParentDuration(int $childId): void
+    {
+        $parentId = $this->getParentIdFromLinks($childId);
+        if (!$parentId) {
+            return;
+        }
+
+        $parent = $this->taskModel->getById($parentId);
+        $child  = $this->taskModel->getById($childId);
+
+        if (!$parent || !$child) {
+            return;
+        }
+
+        $parentStart = $parent['date_started'] ?: $parent['date_creation'];
+        $parentEnd   = $parent['date_due']     ?: $parent['date_creation'];
+        $childStart  = $child['date_started']  ?: $child['date_creation'];
+        $childEnd    = $child['date_due']      ?: $child['date_creation'];
+
+        $update = ['id' => $parentId];
+        $needsUpdate = false;
+
+        // Extend parent earlier if child starts earlier
+        if ($childStart && $childStart < $parentStart) {
+            $update['date_started'] = $childStart;
+            $needsUpdate = true;
+        }
+
+        if ($childEnd && $childEnd > $parentEnd) {
+            $update['date_due'] = $childEnd;
+            $needsUpdate = true;
+        } else {
+            // shrink parent if all children end earlier
+            $latestChildEnd = 0;
+            $children = $this->taskLinkModel->getAll($parentId);
+            foreach ($children as $link) {
+                if (mb_strtolower($link['label']) === 'is parent of') {
+                    $child = $this->taskModel->getById($link['opposite_task_id']);
+                    if ($child && $child['date_due'] > $latestChildEnd) {
+                        $latestChildEnd = $child['date_due'];
+                    }
+                }
+            }
+            if ($latestChildEnd && $latestChildEnd < $parentEnd) {
+                $update['date_due'] = $latestChildEnd;
+                $needsUpdate = true;
+            }
+        }        
+
+        if ($needsUpdate) {
+            $this->taskModificationModel->update($update);
+        }
+    }
+
+    /**
+     * Resolve parent ID using Kanboard’s internal links (“is child of”).
+     */
+    private function getParentIdFromLinks(int $taskId): ?int
+    {
+        $links = $this->taskLinkModel->getAll($taskId);
+        foreach ($links as $link) {
+            if (mb_strtolower($link['label']) === 'is child of') {
+                return (int)$link['opposite_task_id'];
+            }
+        }
+        return null;
+    }
+
 
     /**
      * Check if creating a dependency would create a circular reference
