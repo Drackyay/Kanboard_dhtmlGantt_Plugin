@@ -136,6 +136,15 @@ class TaskGanttController extends BaseController
             $this->taskMetadataModel->save($task_id, array('is_milestone' => $isMilestone));
         }
         
+        // ✅ Handle progress updates (store in metadata)
+        if (isset($changes['progress'])) {
+            $progress = (float) $changes['progress'];
+            // Convert 0-1 range to 0-100 for storage
+            $progressPercent = round($progress * 100);
+            error_log('DHtmlX Gantt Save - Setting progress to: ' . $progressPercent . '%');
+            $this->taskMetadataModel->save($task_id, array('gantt_progress' => $progressPercent));
+        }
+        
         // ✅ Handle group and sprint updates from Gantt (if present)
         if (isset($changes['group_id'])) {
             $this->taskMetadataModel->save($task_id, array('group_id' => (int)$changes['group_id']));

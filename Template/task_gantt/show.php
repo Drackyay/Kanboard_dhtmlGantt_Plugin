@@ -79,6 +79,12 @@
                 <?= t('Move dependencies with task') ?>
             </label>
 
+            <!-- Toggle: Show Progress Bars -->
+            <label class="dhtmlx-toggle" style="margin-left: 15px;">
+                <input type="checkbox" id="show-progress-toggle" checked>
+                <?= t('Show progress bars') ?>
+            </label>
+
             <div class="dhtmlx-toolbar-separator"></div>
 
             <button id="dhtmlx-zoom-in" class="btn" title="<?= t('Zoom In') ?>">
@@ -89,11 +95,7 @@
                 <i class="fa fa-search-minus"></i>
             </button>
 
-            <button id="dhtmlx-fit" class="btn" title="<?= t('Fit to Screen') ?>">
-                <i class="fa fa-arrows-alt"></i>
-            </button>
-
-            <button id="dhtmlx-expand-all" class="btn" title="<?= t('Expand All') ?>">
+            <button id="dhtmlx-expand-toggle" class="btn" title="<?= t('Expand All') ?>" data-state="collapsed">
                 <i class="fa fa-expand"></i>
             </button>
         </div>

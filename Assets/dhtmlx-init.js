@@ -1232,6 +1232,9 @@ gantt.form_blocks["template"] = {
         // ✅ SETUP TOGGLE FOR MOVE DEPENDENCIES WITH TASK
         setupMoveDependenciesToggle();
         
+        // ✅ SETUP TOGGLE FOR SHOW PROGRESS BARS
+        setupShowProgressToggle();
+        
         // ✅ MANUAL DEPENDENCY MOVEMENT (GPL version doesn't have auto-scheduling)
         setupManualDependencyMovement();
         
@@ -1285,6 +1288,51 @@ function setupMoveDependenciesToggle() {
     });
     
     console.log('✅ Move dependencies toggle initialized - Default: OFF, Current:', moveDependenciesEnabled);
+}
+
+/**
+ * ✅ SETUP SHOW PROGRESS TOGGLE
+ * Controls whether progress bars are visible on tasks
+ */
+function setupShowProgressToggle() {
+    var toggleEl = document.getElementById('show-progress-toggle');
+    if (!toggleEl) {
+        console.warn('Show progress toggle not found');
+        return;
+    }
+    
+    // Restore saved preference from localStorage (default: ON)
+    var savedPref = localStorage.getItem('showProgress');
+    var showProgress = savedPref !== null ? savedPref === 'true' : true; // Default: ON
+    toggleEl.checked = showProgress;
+    
+    // Apply initial state
+    gantt.config.show_progress = showProgress;
+    
+    // Handle toggle changes
+    toggleEl.addEventListener('change', function(e) {
+        showProgress = e.target.checked;
+        localStorage.setItem('showProgress', showProgress);
+        gantt.config.show_progress = showProgress;
+        
+        // Re-render to apply changes
+        gantt.render();
+        
+        // Show feedback message
+        if (typeof gantt.message === 'function') {
+            gantt.message({
+                text: showProgress 
+                    ? '✅ Progress bars shown' 
+                    : '⏸️ Progress bars hidden',
+                type: 'info',
+                expire: 2000
+            });
+        }
+        
+        console.log('🔄 Show progress toggled:', showProgress);
+    });
+    
+    console.log('✅ Show progress toggle initialized - Default: ON, Current:', showProgress);
 }
 
 /**
@@ -1494,9 +1542,12 @@ function smartZoom(direction) {
 
 function smartFitToScreen() {
     var tasks = gantt.getTaskByTime();
-    if (tasks.length === 0) return;
+    if (tasks.length === 0) {
+        console.log('No tasks to fit');
+        return;
+    }
     
-    // Find actual date range
+    // Find actual date range across all visible tasks
     var minDate = null, maxDate = null;
     tasks.forEach(function(task) {
         var start = task.start_date;
@@ -1505,29 +1556,62 @@ function smartFitToScreen() {
         if (!maxDate || end > maxDate) maxDate = end;
     });
     
-    // Add 10% padding
-    var diff = (maxDate - minDate) / 10;
-    minDate = new Date(minDate.getTime() - diff);
-    maxDate = new Date(maxDate.getTime() + diff);
+    if (!minDate || !maxDate) {
+        console.log('Could not determine date range');
+        return;
+    }
     
-    // Calculate best zoom level
+    // Add padding (10% on each side)
+    var diff = (maxDate - minDate) / 10;
+    var paddedMinDate = new Date(minDate.getTime() - diff);
+    var paddedMaxDate = new Date(maxDate.getTime() + diff);
+    
+    // Calculate best zoom level based on available space
     var container = document.getElementById('dhtmlx-gantt-chart');
-    var availableWidth = container.offsetWidth - gantt.config.grid_width;
-    var totalDays = (maxDate - minDate) / (1000 * 60 * 60 * 24);
+    if (!container) return;
+    
+    var availableWidth = container.offsetWidth - (gantt.config.grid_width || 400);
+    var totalDays = (paddedMaxDate - paddedMinDate) / (1000 * 60 * 60 * 24);
     var pixelsPerDay = availableWidth / totalDays;
     
-    // Pick level: >80px/day=hour, >40=day, >15=week, else month
-    var level = pixelsPerDay > 80 ? 0 : pixelsPerDay > 40 ? 1 : pixelsPerDay > 15 ? 2 : 3;
+    // Choose appropriate zoom level
+    // hour: >100px/day, day: >30px/day, week: >10px/day, month: else
+    var level;
+    if (pixelsPerDay > 100) {
+        level = 0; // Hour view
+    } else if (pixelsPerDay > 30) {
+        level = 1; // Day view
+    } else if (pixelsPerDay > 10) {
+        level = 2; // Week view
+    } else {
+        level = 3; // Month view
+    }
     
-    // Apply
+    console.log('🎯 Fit to Screen:', {
+        tasks: tasks.length,
+        dateRange: totalDays.toFixed(1) + ' days',
+        pixelsPerDay: pixelsPerDay.toFixed(2),
+        zoomLevel: zoomLevels[level].name
+    });
+    
+    // Apply zoom level
     gantt.config.scales = zoomLevels[level].scales;
-    gantt.config.start_date = minDate;
-    gantt.config.end_date = maxDate;
-    gantt.render();
     currentZoomLevel = level;
+    gantt.render();
     
-    // Scroll to start
-    gantt.showDate(minDate);
+    // Scroll to show the first task (left edge)
+    setTimeout(function() {
+        gantt.showDate(minDate);
+    }, 100);
+    
+    // Show success message
+    if (typeof gantt.message === 'function') {
+        gantt.message({
+            text: '📐 Fit to screen: ' + zoomLevels[level].name + ' view',
+            type: 'info',
+            expire: 2000
+        });
+    }
 }
 //new
 
@@ -1726,7 +1810,8 @@ function setupGanttEventHandlers() {
                 owner_id: task.owner_id || 0,
                 task_type: task.task_type || 'task',
                 child_tasks: task.child_tasks || [],
-                is_milestone: task.is_milestone ? 1 : 0
+                is_milestone: task.is_milestone ? 1 : 0,
+                progress: task.progress || 0  // ✅ Save progress value
             };
         
             clearTimeout(saveTimeout);
@@ -2134,16 +2219,9 @@ function fallbackRefresh() {
     var zoomOutBtn = document.getElementById('dhtmlx-zoom-out');
     if (zoomOutBtn) {
         zoomOutBtn.addEventListener('click', function() {
-        smartZoom('out');
+            smartZoom('out');
         });
     }
-    
-    var fitBtn = document.getElementById('dhtmlx-fit');
-    if (fitBtn) {
-        fitBtn.addEventListener('click', function() {
-        smartFitToScreen();
-    });
-}
 
 // ✅ GROUP BY DROPDOWN - Manual grouping (GPL version doesn't have gantt.groupBy())
 var groupBySelect = document.getElementById('dhtmlx-group-by-select');
@@ -2583,14 +2661,40 @@ function applySprintGrouping() {
 */
 
     
-    // Expand all button
-    var expandBtn = document.getElementById('dhtmlx-expand-all');
-    if (expandBtn) {
-        expandBtn.addEventListener('click', function() {
-            gantt.eachTask(function(task) {
-                task.$open = true;
-            });
-            gantt.render();
+    // ✅ Expand/Collapse toggle button
+    var expandToggleBtn = document.getElementById('dhtmlx-expand-toggle');
+    if (expandToggleBtn) {
+        expandToggleBtn.addEventListener('click', function() {
+            var currentState = this.getAttribute('data-state');
+            var icon = this.querySelector('i');
+            
+            if (currentState === 'collapsed') {
+                // Expand all tasks
+                gantt.eachTask(function(task) {
+                    task.$open = true;
+                });
+                gantt.render();
+                
+                // Update button to show "Collapse All"
+                this.setAttribute('data-state', 'expanded');
+                this.setAttribute('title', 'Collapse All');
+                icon.className = 'fa fa-compress';
+                
+                console.log('🔽 Expanded all tasks');
+            } else {
+                // Collapse all tasks
+                gantt.eachTask(function(task) {
+                    task.$open = false;
+                });
+                gantt.render();
+                
+                // Update button to show "Expand All"
+                this.setAttribute('data-state', 'collapsed');
+                this.setAttribute('title', 'Expand All');
+                icon.className = 'fa fa-expand';
+                
+                console.log('🔼 Collapsed all tasks');
+            }
         });
     }
     

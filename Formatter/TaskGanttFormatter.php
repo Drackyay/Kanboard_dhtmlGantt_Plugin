@@ -204,13 +204,19 @@ class TaskGanttFormatter extends BaseFormatter implements FormatterInterface
             $childTaskIds = $this->getChildrenIds((int)$task['id']);
         }
 
+        // ✅ Check for stored progress in metadata first, then fall back to calculated
+        $progress = $this->getStoredProgress($task);
+        if ($progress === null) {
+            $progress = $this->calculateProgress($task);
+        }
+        
         return array(
             'id' => $task['id'],
             'text' => $task['title'],
             'start_date' => date('Y-m-d H:i', $start),
             'end_date' => date('Y-m-d H:i', $end),
             'duration' => $this->calculateDuration($start, $end),
-            'progress' => $this->calculateProgress($task),
+            'progress' => $progress,
             'priority' => $this->mapPriority($task['priority']),
             'color' => $color,
             'owner_id' => $task['owner_id'],
@@ -332,6 +338,23 @@ class TaskGanttFormatter extends BaseFormatter implements FormatterInterface
     {
         $diff = ceil(($end - $start) / (24 * 60 * 60));
         return max(1, $diff); // At least 1 day
+    }
+
+    /**
+     * Get stored progress from metadata (if manually set in Gantt)
+     *
+     * @access private
+     * @param  array $task
+     * @return float|null Returns progress value (0-1) or null if not set
+     */
+    private function getStoredProgress(array $task)
+    {
+        $metadata = $this->taskMetadataModel->getAll($task['id']);
+        if (isset($metadata['gantt_progress']) && $metadata['gantt_progress'] !== '') {
+            // Convert 0-100 to 0-1 range for DHTMLX Gantt
+            return (float) $metadata['gantt_progress'] / 100;
+        }
+        return null;
     }
 
     /**
