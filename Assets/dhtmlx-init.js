@@ -1587,6 +1587,14 @@ function setupGanttEventHandlers() {
             // Update statistics
             updateStatistics();
             
+            // ✅ Check if this is a subtask (has a parent)
+            var parentTaskId = task.parent;
+            var isSubtask = parentTaskId && parentTaskId !== 0 && parentTaskId !== '0';
+            
+            if (isSubtask) {
+                console.log('🔗 Creating subtask with parent:', parentTaskId);
+            }
+            
             // Send create request to server including all fields
             // ✅ Format dates as strings to preserve exact time
             var formattedStartDate = gantt.date.date_to_str(gantt.config.date_format)(task.start_date);
@@ -1617,6 +1625,31 @@ function setupGanttEventHandlers() {
                     // Update the task ID in Gantt with the server-assigned ID
                     gantt.changeTaskId(id, data.id);
                     console.log('Task ID updated from', id, 'to', data.id);
+                    
+                    // ✅ If this is a subtask, create the internal link "is a child of"
+                    if (isSubtask) {
+                        console.log('🔗 Creating internal link: Task', data.id, 'is a child of', parentTaskId);
+                        
+                        fetch(window.ganttUrls.createLink, {
+                            method: 'POST',
+                            headers: {'Content-Type': 'application/json'},
+                            body: JSON.stringify({
+                                source: data.id,     // Child task (the new subtask)
+                                target: parentTaskId, // Parent task
+                                type: 'child'        // 'child' = "is a child of" in Kanboard
+                            })
+                        })
+                        .then(response => response.json())
+                        .then(linkData => {
+                            console.log('✅ Internal link created successfully:', linkData);
+                            if (linkData.result !== 'ok') {
+                                console.error('Failed to create internal link:', linkData.message);
+                            }
+                        })
+                        .catch(error => {
+                            console.error('Error creating internal link:', error);
+                        });
+                    }
                 } else {
                     console.error('Failed to create task:', data.message);
                 }

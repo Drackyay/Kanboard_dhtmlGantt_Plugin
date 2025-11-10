@@ -333,19 +333,33 @@ class TaskGanttController extends BaseController
                 return;
             }
 
-            // Get the "blocks" link type ID
-            $blocksLinkId = $this->getLinkIdByLabel('blocks');
-            error_log('Blocks link ID: ' . ($blocksLinkId ? $blocksLinkId : 'not found'));
+            // ✅ Determine link type based on 'type' parameter
+            // type = 'child' means creating parent-child relationship (subtask)
+            // type = '1' or default means creating dependency (blocks)
+            $linkType = isset($data['type']) ? $data['type'] : 'blocks';
+            $linkLabel = 'blocks'; // default
             
-            if (!$blocksLinkId) {
-                $this->response->json(array('result' => 'error', 'message' => 'Blocks relationship type not found'), 500);
+            if ($linkType === 'child' || $linkType === '1') {
+                // Creating parent-child relationship: source is child of target
+                $linkLabel = 'is a child of';
+                error_log('Creating parent-child link: Task ' . $sourceTaskId . ' is a child of ' . $targetTaskId);
+            } else {
+                // Creating dependency: source blocks target
+                $linkLabel = 'blocks';
+                error_log('Creating dependency link: Task ' . $sourceTaskId . ' blocks ' . $targetTaskId);
+            }
+            
+            $linkId = $this->getLinkIdByLabel($linkLabel);
+            error_log('Link type "' . $linkLabel . '" ID: ' . ($linkId ? $linkId : 'not found'));
+            
+            if (!$linkId) {
+                $this->response->json(array('result' => 'error', 'message' => 'Link type "' . $linkLabel . '" not found'), 500);
                 return;
             }
 
-            // Create "blocks" dependency: source blocks target
-            // TaskLinkModel::create() expects 3 separate arguments: (taskId, oppositeTaskId, linkId)
-            $result = $this->taskLinkModel->create($sourceTaskId, $targetTaskId, $blocksLinkId);
-            error_log('Dependency creation result: ' . ($result ? 'success' : 'failed'));
+            // Create link: TaskLinkModel::create() expects 3 separate arguments: (taskId, oppositeTaskId, linkId)
+            $result = $this->taskLinkModel->create($sourceTaskId, $targetTaskId, $linkId);
+            error_log('Link creation result: ' . ($result ? 'success' : 'failed'));
 
             if ($result) {
                 $this->response->json(array('result' => 'ok', 'message' => 'Dependency created successfully'), 201);
