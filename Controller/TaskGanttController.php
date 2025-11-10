@@ -59,6 +59,9 @@ class TaskGanttController extends BaseController
             $this->taskGanttFormatter->setProject($project);
         }
 
+        // Get all groups in the system (for legend display)
+        $groups = $this->db->table('groups')->findAll();
+
         $this->response->html($this->helper->layout->app(
             'DhtmlGantt:task_gantt/show',
             array(
@@ -69,6 +72,7 @@ class TaskGanttController extends BaseController
                 'tasks'            => $filter->format($this->taskGanttFormatter),
                 'moveDepsEnabled'  => $moveDepsEnabled,
                 'groupBy'          => $groupBy, // NEW (optional—your template can also read from request)
+                'groups'           => $groups,  // All groups for legend
             )
         ));
     }
@@ -191,30 +195,7 @@ class TaskGanttController extends BaseController
         ));
 
         if ($task_id) {
-            // Save task_type in metadata
-            if (isset($data['task_type'])) {
-                $taskType = $data['task_type'];
-                error_log('DHtmlX Gantt Create - Setting task_type to: ' . $taskType . ' for task: ' . $task_id);
-                $this->taskMetadataModel->save($task_id, array('task_type' => $taskType));
-                
-                // If Sprint, create parent-child links
-                if ($taskType === 'sprint' && isset($data['child_tasks']) && is_array($data['child_tasks'])) {
-                    $parentLinkId = $this->getLinkIdByLabel('is a parent of');
-                    
-                    if ($parentLinkId) {
-                        foreach ($data['child_tasks'] as $childTaskId) {
-                            $childId = (int) $childTaskId;
-                            if ($childId > 0) {
-                                // Create link: sprint (parent) -> child task
-                                $this->taskLinkModel->create($task_id, $childId, $parentLinkId);
-                                error_log('DHtmlX Gantt Create - Created parent link from Sprint ' . $task_id . ' to task ' . $childId);
-                            }
-                        }
-                    }
-                }
-            }
-            
-            // Save milestone status if provided (for backward compatibility)
+            // Save milestone status if provided
             if (isset($data['is_milestone'])) {
                 $isMilestone = $data['is_milestone'] ? '1' : '0';
                 error_log('DHtmlX Gantt Create - Setting milestone status to: ' . $isMilestone . ' for task: ' . $task_id);
