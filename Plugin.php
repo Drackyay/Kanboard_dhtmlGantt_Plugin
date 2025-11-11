@@ -86,6 +86,9 @@ class Plugin extends Base
         $this->hook->on('template:layout:js',  array('template' => 'plugins/DhtmlGantt/Assets/gantt.js'));
         $this->hook->on('template:layout:css', array('template' => 'plugins/DhtmlGantt/Assets/gantt.css'));
 
+        // 4) CSP-compliant fixes (must load last to override icon fonts)
+        $this->hook->on('template:layout:css', array('template' => 'plugins/DhtmlGantt/Assets/gantt-csp-fix.css'));
+
         //
         // Services
         //

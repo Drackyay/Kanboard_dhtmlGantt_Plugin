@@ -1,0 +1,91 @@
+/* 
+ * CSP-compliant fixes for DHTMLX Gantt GPL
+ * Replace icon fonts with simple text/symbols
+ */
+
+/* Force all gantt elements to use system fonts instead of icon fonts */
+[class*="gantt_"]::before,
+[class*="gantt_"]:before,
+[class*="gantt_"]::after,
+[class*="gantt_"]:after,
+[class*="dhx_"]::before,
+[class*="dhx_"]:before,
+[class*="dhx_"]::after,
+[class*="dhx_"]:after {
+    font-family: Arial, sans-serif !important;
+}
+
+/* Tree expand/collapse icons - use simple arrows */
+.gantt_tree_icon.gantt_open::before,
+.gantt_tree_icon.gantt_open:before {
+    content: '▼' !important;
+    font-family: Arial, sans-serif !important;
+    font-size: 10px !important;
+}
+
+.gantt_tree_icon.gantt_close::before,
+.gantt_tree_icon.gantt_close:before {
+    content: '▶' !important;
+    font-family: Arial, sans-serif !important;
+    font-size: 10px !important;
+}
+
+/* Add Task button - replace icon with "+" */
+.gantt_grid_head_add::before,
+.gantt_grid_head_add:before,
+.gantt_add::before,
+.gantt_add:before {
+    content: '+' !important;
+    font-family: Arial, sans-serif !important;
+    font-size: 18px !important;
+    font-weight: bold !important;
+}
+
+/* Delete button - replace icon with "×" */
+.gantt_delete_btn::before,
+.gantt_delete_btn:before {
+    content: '×' !important;
+    font-family: Arial, sans-serif !important;
+    font-size: 20px !important;
+    font-weight: bold !important;
+}
+
+/* Sort icons - replace with arrows */
+.gantt_asc::before,
+.gantt_asc:before {
+    content: '↑' !important;
+    font-family: Arial, sans-serif !important;
+    font-size: 14px !important;
+}
+
+.gantt_desc::before,
+.gantt_desc:before {
+    content: '↓' !important;
+    font-family: Arial, sans-serif !important;
+    font-size: 14px !important;
+}
+
+/* Link/arrow icons */
+.gantt_link_arrow::before,
+.gantt_link_arrow:before {
+    content: '→' !important;
+    font-family: Arial, sans-serif !important;
+    font-size: 12px !important;
+}
+
+/* Make dependency arrow heads bigger */
+.gantt_task_link .gantt_link_arrow {
+    width: 0 !important;
+    height: 0 !important;
+    border-style: solid !important;
+    border-width: 7px 0 7px 10px !important; /* Bigger arrow head */
+    border-color: transparent transparent transparent #4a8f43 !important;
+}
+
+/* Any remaining icon elements that need to be replaced */
+.dhx_gantt_icon::before,
+.dhx_gantt_icon:before {
+    font-family: Arial, sans-serif !important;
+    content: '•' !important;
+    font-size: 16px !important;
+}

@@ -335,14 +335,7 @@ class TaskGanttController extends BaseController
                 return;
             }
 
-            // Check for circular dependencies
-            if ($this->wouldCreateCircularDependency($sourceTaskId, $targetTaskId)) {
-                error_log('Circular dependency detected');
-                $this->response->json(array('result' => 'error', 'message' => 'Circular dependency detected'), 400);
-                return;
-            }
-
-            // ✅ Determine link type based on 'type' parameter
+            // ✅ Determine link type based on 'type' parameter (moved up before circular check)
             // type = 'child' means creating parent-child relationship (subtask)
             // type = '1' or default means creating dependency (blocks)
             $linkType = isset($data['type']) ? $data['type'] : 'blocks';
@@ -363,6 +356,13 @@ class TaskGanttController extends BaseController
             
             if (!$linkId) {
                 $this->response->json(array('result' => 'error', 'message' => 'Link type "' . $linkLabel . '" not found'), 500);
+                return;
+            }
+            
+            // ✅ Check for circular dependencies ONLY for "blocks" relationships, NOT parent-child
+            if ($linkLabel === 'blocks' && $this->wouldCreateCircularDependency($sourceTaskId, $targetTaskId)) {
+                error_log('Circular dependency detected for blocks relationship');
+                $this->response->json(array('result' => 'error', 'message' => 'Circular dependency detected'), 400);
                 return;
             }
 
@@ -420,6 +420,7 @@ class TaskGanttController extends BaseController
 
     /**
      * Automatically adjust parent duration when a child is extended.
+     * ✅ ONLY adjusts SPRINTS, not regular parent-child tasks
      */
     private function adjustParentDuration(int $childId): void
     {
@@ -432,6 +433,15 @@ class TaskGanttController extends BaseController
         $child  = $this->taskModel->getById($childId);
 
         if (!$parent || !$child) {
+            return;
+        }
+        
+        // ✅ ONLY adjust duration for SPRINTS, not regular parent tasks
+        $parentMetadata = $this->taskMetadataModel->getAll($parentId);
+        $isSprint = isset($parentMetadata['task_type']) && $parentMetadata['task_type'] === 'sprint';
+        
+        if (!$isSprint) {
+            error_log('Skipping duration adjustment for non-sprint parent task: ' . $parentId);
             return;
         }
 
@@ -504,6 +514,7 @@ class TaskGanttController extends BaseController
 
     /**
      * Get all tasks that depend on a given task (recursive)
+     * ✅ ONLY checks "blocks" relationships, NOT parent-child relationships
      */
     private function getAllDependentTasks($taskId, $visited = array())
     {
@@ -518,6 +529,12 @@ class TaskGanttController extends BaseController
         $links = $this->taskLinkModel->getAll($taskId);
         
         foreach ($links as $link) {
+            // ✅ ONLY check "blocks" relationships, skip parent-child relationships
+            $linkLabel = strtolower($link['label'] ?? '');
+            if ($linkLabel !== 'blocks' && $linkLabel !== 'is blocked by') {
+                continue; // Skip non-dependency links (e.g., parent-child)
+            }
+            
             $dependentTaskId = $link['task_id'];
             $dependentTasks[] = $dependentTaskId;
             

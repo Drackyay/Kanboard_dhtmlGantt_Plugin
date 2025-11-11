@@ -1615,6 +1615,80 @@ function smartFitToScreen() {
 }
 //new
 
+/**
+ * ✅ ADJUST SPRINT DURATION based on child tasks
+ * Only applies to sprints (task_type === 'sprint' or type === 'project')
+ * Regular parent-child tasks do NOT auto-adjust
+ */
+function recalcParentDuration(childTask) {
+    if (!childTask || !childTask.parent) return;
+
+    var parentId = childTask.parent;
+    var parent = gantt.getTask(parentId);
+    if (!parent) return;
+    
+    // ✅ ONLY adjust duration for SPRINTS, not regular parent tasks
+    var isSprint = parent.task_type === 'sprint' || parent.type === 'project';
+    if (!isSprint) {
+        console.log('⏭️ Skipping duration adjustment for non-sprint parent:', parent.text);
+        return;
+    }
+
+    // Gather all direct children of the sprint
+    var children = gantt.getChildren(parentId).map(function(id) {
+        return gantt.getTask(id);
+    });
+
+    if (children.length === 0) return;
+
+    // Compute earliest start and latest end among children
+    var minStart = children[0].start_date;
+    var maxEnd = children[0].end_date;
+    for (var i = 1; i < children.length; i++) {
+        var c = children[i];
+        if (c.start_date < minStart) minStart = c.start_date;
+        if (c.end_date > maxEnd) maxEnd = c.end_date;
+    }
+
+    // Update sprint start/end based on new bounds
+    var changed = false;
+    if (+minStart !== +parent.start_date) {
+        parent.start_date = new Date(minStart);
+        changed = true;
+    }
+    if (+maxEnd !== +parent.end_date) {
+        parent.end_date = new Date(maxEnd);
+        changed = true;
+    }
+
+    if (changed) {
+        console.log('🧮 Sprint duration recalculated:', parent.text, {
+            newStart: parent.start_date,
+            newEnd: parent.end_date
+        });
+        gantt.refreshTask(parentId);
+        gantt.updateTask(parentId);
+    }
+}
+
+/**
+ * ✅ RECALCULATE ALL SPRINT DURATIONS after data load
+ * Only adjusts sprints, not regular parent tasks
+ */
+function recalcAllParentDurations() {
+    console.log('🔄 Running initial sprint duration recalculation...');
+    gantt.eachTask(function(task) {
+        if (task.parent) {
+            var parent = gantt.getTask(task.parent);
+            // Only recalc if parent is a sprint
+            if (parent && (parent.task_type === 'sprint' || parent.type === 'project')) {
+                recalcParentDuration(task);
+            }
+        }
+    });
+    gantt.render();
+    console.log('✅ Sprint durations synced after load');
+}
 
 function setupGanttEventHandlers() {
     // Bind once guard
@@ -2046,67 +2120,7 @@ function setupGanttEventHandlers() {
         console.warn('No ganttUrls found, data processor not initialized');
     }
     
-    /**
-     * Adjust parent task start/end locally based on all its children
-     */
-    function recalcParentDuration(childTask) {
-        if (!childTask || !childTask.parent) return;
-
-        var parentId = childTask.parent;
-        var parent = gantt.getTask(parentId);
-        if (!parent) return;
-
-        // Gather all direct children of the parent
-        var children = gantt.getChildren(parentId).map(function(id) {
-            return gantt.getTask(id);
-        });
-
-        if (children.length === 0) return;
-
-        // Compute earliest start and latest end among children
-        var minStart = children[0].start_date;
-        var maxEnd = children[0].end_date;
-        for (var i = 1; i < children.length; i++) {
-            var c = children[i];
-            if (c.start_date < minStart) minStart = c.start_date;
-            if (c.end_date > maxEnd) maxEnd = c.end_date;
-        }
-
-        // Update parent start/end based on new bounds (both directions)
-        var changed = false;
-        if (+minStart !== +parent.start_date) {
-            parent.start_date = new Date(minStart);
-            changed = true;
-        }
-        if (+maxEnd !== +parent.end_date) {
-            parent.end_date = new Date(maxEnd);
-            changed = true;
-        }
-
-        if (changed) {
-            console.log('🧮 Parent recalculated:', parent.text, {
-                newStart: parent.start_date,
-                newEnd: parent.end_date
-            });
-            gantt.refreshTask(parentId);
-            gantt.updateTask(parentId);
-        }
-    }
-
-    /**
-     * Recalculate all parent task durations after data load
-     * Ensures proper parent start/end on initial render (no manual interaction needed)
-     */
-    function recalcAllParentDurations() {
-        console.log('🔄 Running initial parent-child recalculation...');
-        gantt.eachTask(function(task) {
-            if (task.parent) {
-                recalcParentDuration(task);
-            }
-        });
-        gantt.render();
-        console.log('✅ Parent-child durations synced after load');
-    }
+    // Note: recalcParentDuration and recalcAllParentDurations moved to global scope
 
 
 
