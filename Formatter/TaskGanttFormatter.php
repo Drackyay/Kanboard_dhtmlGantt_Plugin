@@ -187,6 +187,9 @@ class TaskGanttFormatter extends BaseFormatter implements FormatterInterface
         $metadata = $this->taskMetadataModel->getAll($task['id']);
         $isMilestone = !empty($metadata['is_milestone']) && $metadata['is_milestone'] === '1';
         
+        // ✅ Get task type from metadata (default to 'task')
+        $taskType = isset($metadata['task_type']) && $metadata['task_type'] !== '' ? $metadata['task_type'] : 'task';
+        
         // Override color for milestones to green, otherwise use group-based color
         $color = $isMilestone ? '#27ae60' : $this->getGroupFillColor($task);
         

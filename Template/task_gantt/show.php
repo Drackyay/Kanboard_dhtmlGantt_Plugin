@@ -9,26 +9,6 @@
     
     <div class="menu-inline" style="flex-shrink: 0;">
         <ul>
-            <!-- Group-by (CSP-safe: no inline JS; external listener will handle navigation) -->
-            <li>
-                <span class="icon fa-users"></span> <?= t('Group by') ?>
-                <select id="group-by-select"
-                        data-nav-base="<?= $this->url->href(
-                            'TaskGanttController',
-                            'show',
-                            array(
-                                'project_id' => $project['id'],
-                                'sorting'    => $sorting ?: 'board',
-                                'plugin'     => 'DhtmlGantt'
-                            )
-                        ) ?>">
-                    <option value="none"     <?= $cur === 'none' ? 'selected' : '' ?>><?= t('None') ?></option>
-                    <option value="group"    <?= $cur === 'group' ? 'selected' : '' ?>><?= t('Group') ?></option>
-                    <option value="assignee" <?= $cur === 'assignee' ? 'selected' : '' ?>><?= t('Assignee') ?></option>
-                    <option value="sprint"   <?= $cur === 'sprint' ? 'selected' : '' ?>><?= t('Sprint') ?></option>
-                </select>
-            </li>
-
             <!-- Sort by position -->
             <li <?= $sorting === 'board' ? 'class="active"' : '' ?>>
                 <?= $this->url->icon(
@@ -81,12 +61,19 @@
                 <i class="fa fa-plus"></i> <?= t('Add Task') ?>
             </button>
 
-            <!-- NEW: Group by Assignee -->
-            <button id="dhtmlx-group-assignee" class="btn" title="<?= t('Group by Assignee') ?>">
-                <i class="fa fa-users"></i> <?= t('Group by Assignee') ?>
-            </button>
+            <!-- Group by dropdown -->
+            <div style="display: flex; align-items: center; gap: 6px; margin-left: 10px;">
+                <i class="fa fa-users" style="color: #666;"></i>
+                <span style="font-size: 13px; color: #666;"><?= t('Group by') ?>:</span>
+                <select id="dhtmlx-group-by" class="btn" style="height: 32px; padding: 5px 10px; font-size: 13px; min-width: 120px; max-width: 150px;">
+                    <option value="none"><?= t('None') ?></option>
+                    <option value="assignee"><?= t('Assignee') ?></option>
+                    <option value="group"><?= t('User Group') ?></option>
+                    <option value="sprint"><?= t('Sprint') ?></option>
+                </select>
+            </div>
 
-            <!-- NEW: Toggle Workload View -->
+            <!-- Toggle Workload View -->
             <button id="dhtmlx-toggle-resources" class="btn" title="<?= t('Toggle Workload View') ?>">
                 <i class="fa fa-bar-chart"></i> <?= t('Workload View') ?>
             </button>
@@ -193,12 +180,25 @@
                             ℹ️ <?= t('No user groups defined. Tasks without groups use default colors.') ?>
                         </div>
                     <?php endif; ?>
+                    
+                    <!-- Sprint Colors -->
+                    <strong style="font-size: 11px; color: #666; display: block; margin-top: 10px; margin-bottom: 5px;">
+                        <?= t('Sprints:') ?>
+                    </strong>
+                    <div class="dhtmlx-legend-item">
+                        <span class="dhtmlx-legend-color" style="background: #3498db; border: 2px solid #ddd;"></span>
+                        <span><?= t('Sprint Tasks') ?></span>
+                    </div>
+                    <div class="dhtmlx-legend-item">
+                        <span class="dhtmlx-legend-color" style="background: #95a5a6; border: 2px solid #ddd;"></span>
+                        <span><?= t('Regular Tasks') ?></span>
+                    </div>
                 </div>
             </div>
         </div>
 
-        <!-- Custom Workload Panel -->
-        <div id="workload-panel" class="workload-panel">
+        <!-- Custom Workload Panel (hidden by default) -->
+        <div id="workload-panel" class="workload-panel hidden">
             <div class="workload-header">
                 <h4><?= t('Tasks per Person - Workload Summary') ?></h4>
             </div>

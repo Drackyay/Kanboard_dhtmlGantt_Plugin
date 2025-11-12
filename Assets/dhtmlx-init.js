@@ -546,11 +546,13 @@ function initDhtmlxGantt() {
     // new code for lightbox + link to kb
     // Configure lightbox sections to add "View in Kanboard" button
 gantt.config.lightbox.sections = [
-    {name: "type", height: 22, map_to: "is_milestone", type: "select", options: [
-        {key: false, label: "Task"},
-        {key: true, label: "Milestone"}
+    {name: "type", height: 22, map_to: "task_type", type: "select", options: [
+        {key: "task", label: "Task"},
+        {key: "milestone", label: "Milestone"},
+        {key: "sprint", label: "Sprint"}
     ]},
     {name: "description", height: 38, map_to: "text", type: "textarea", focus: true},
+    {name: "tasks", height: 22, map_to: "child_tasks", type: "template"},
     {name: "group", height: 22, map_to: "group_id", type: "select", options: []},
     {name: "assignee", height: 22, map_to: "owner_id", type: "select", options: []},
     {name: "priority", height: 22, map_to: "priority", type: "select", options: [
@@ -565,7 +567,8 @@ gantt.config.lightbox.sections = [
 
 // Custom labels for lightbox sections
 gantt.locale.labels.section_type = "Type";
-gantt.locale.labels.section_group = "Group/Sprint";
+gantt.locale.labels.section_tasks = "Tasks";
+gantt.locale.labels.section_group = "User Group";
 gantt.locale.labels.section_assignee = "Assign To";
 gantt.locale.labels.section_kanboard_link = "Quick Actions";
 
@@ -1612,7 +1615,8 @@ function setupGanttEventHandlers() {
                     end_date: task.end_date,
                     priority: task.priority || 'normal',
                     owner_id: task.owner_id || 0,
-                    is_milestone: task.is_milestone ? 1 : 0
+                    is_milestone: task.is_milestone ? 1 : 0,
+                    sprint: task.sprint || ''
                 })
             })
             .then(response => response.json())
@@ -1724,7 +1728,8 @@ function setupGanttEventHandlers() {
                 task_type: task.task_type || 'task',
                 child_tasks: task.child_tasks || [],
                 is_milestone: task.is_milestone ? 1 : 0,
-                progress: task.progress || 0  // ✅ Save progress value
+                progress: task.progress || 0,  // ✅ Save progress value
+                sprint: task.sprint || ''  // ✅ Save sprint metadata
             };
             
             // Debounce: wait for auto-scheduling to complete before saving
@@ -2081,21 +2086,24 @@ function fallbackRefresh() {
         });
     }
 
-var groupByAssigneeBtn = document.getElementById('dhtmlx-group-assignee');
-if (groupByAssigneeBtn) {
-    var isGrouped = false;
-    groupByAssigneeBtn.addEventListener('click', function() {
-        if (!isGrouped) {
-            groupByAssignee();
-            this.classList.add('active');
-            isGrouped = true;
-        } else {
-            clearGrouping();
-            this.classList.remove('active');
-            isGrouped = false;
-        }
-    });
-}//NEWNEW
+    // ✅ Group by dropdown handler
+    var groupByDropdown = document.getElementById('dhtmlx-group-by');
+    if (groupByDropdown) {
+        groupByDropdown.addEventListener('change', function() {
+            var mode = this.value;
+            console.log('Group by changed to:', mode);
+            
+            if (mode === 'none') {
+                clearGrouping();
+            } else if (mode === 'assignee') {
+                groupByAssignee();
+            } else if (mode === 'group') {
+                groupByUserGroup();
+            } else if (mode === 'sprint') {
+                groupBySprint();
+            }
+        });
+    }
 
     
     // ✅ Expand/Collapse toggle button
@@ -2172,8 +2180,7 @@ if (groupByAssigneeBtn) {
     // Toggle resource/workload view button handler
     var toggleResourcesBtn = document.getElementById('dhtmlx-toggle-resources');
     if (toggleResourcesBtn) {
-        var resourcesVisible = true; // Start visible by default
-        toggleResourcesBtn.classList.add('active'); // Start in active state
+        var resourcesVisible = false; // Start hidden by default
         
         toggleResourcesBtn.addEventListener('click', function() {
             var workloadPanel = document.getElementById('workload-panel');
@@ -2330,6 +2337,191 @@ function groupByAssignee() {
     gantt.parse({data: groupedData, links: []});
     
     console.log('Grouped by assignee successfully');
+}
+
+function groupByUserGroup() {
+    console.log('Grouping by user group...');
+    
+    // Store original tasks if not already stored
+    if (!originalTasks) {
+        originalTasks = gantt.serialize();
+    }
+    
+    // Get all tasks
+    var tasks = gantt.getTaskByTime();
+    var groups = {};
+    var groupedData = [];
+    var groupIdCounter = 10000; // Start group IDs at a high number to avoid conflicts
+    
+    // Group tasks by user group
+    tasks.forEach(function(task) {
+        var userGroup = task.group || 'Ungrouped';
+        if (!groups[userGroup]) {
+            groups[userGroup] = {
+                id: groupIdCounter++,
+                text: userGroup,
+                start_date: task.start_date,
+                duration: 0,
+                progress: 0,
+                type: 'project', // Make it a project/group
+                open: true,
+                group: userGroup,
+                tasks: []
+            };
+        }
+        groups[userGroup].tasks.push(task);
+    });
+    
+    // Build grouped structure (same logic as groupByAssignee)
+    for (var userGroup in groups) {
+        var group = groups[userGroup];
+        var minDate = null;
+        var maxDate = null;
+        var totalProgress = 0;
+        
+        // Calculate group properties
+        group.tasks.forEach(function(task) {
+            if (!minDate || task.start_date < minDate) {
+                minDate = task.start_date;
+            }
+            var taskEnd = task.end_date || gantt.calculateEndDate(task.start_date, task.duration);
+            if (!maxDate || taskEnd > maxDate) {
+                maxDate = taskEnd;
+            }
+            totalProgress += task.progress;
+        });
+        
+        group.start_date = minDate;
+        group.end_date = maxDate;
+        group.duration = gantt.calculateDuration(minDate, maxDate);
+        group.progress = totalProgress / group.tasks.length;
+        
+        // Add group header
+        groupedData.push({
+            id: group.id,
+            text: group.text + ' (' + group.tasks.length + ' tasks)',
+            start_date: gantt.date.date_to_str(gantt.config.date_format)(group.start_date),
+            duration: group.duration,
+            progress: group.progress,
+            type: 'project',
+            open: true
+        });
+        
+        // Add tasks under group
+        group.tasks.forEach(function(task) {
+            groupedData.push({
+                id: task.id,
+                text: task.text,
+                start_date: gantt.date.date_to_str(gantt.config.date_format)(task.start_date),
+                end_date: gantt.date.date_to_str(gantt.config.date_format)(task.end_date || gantt.calculateEndDate(task.start_date, task.duration)),
+                duration: task.duration,
+                progress: task.progress,
+                priority: task.priority,
+                color: task.color,
+                parent: group.id, // Set parent to group
+                group: task.group
+            });
+        });
+    }
+    
+    // Clear and reload with grouped data
+    gantt.clearAll();
+    gantt.parse({data: groupedData, links: []});
+    
+    console.log('Grouped by user group successfully');
+}
+
+function groupBySprint() {
+    console.log('Grouping by sprint...');
+    
+    // Store original tasks if not already stored
+    if (!originalTasks) {
+        originalTasks = gantt.serialize();
+    }
+    
+    // Get all tasks
+    var tasks = gantt.getTaskByTime();
+    var sprints = {};
+    var groupedData = [];
+    var groupIdCounter = 10000; // Start group IDs at a high number to avoid conflicts
+    
+    // Group tasks by sprint metadata
+    tasks.forEach(function(task) {
+        var sprintName = task.sprint || 'No Sprint';
+        if (!sprints[sprintName]) {
+            sprints[sprintName] = {
+                id: groupIdCounter++,
+                text: sprintName,
+                start_date: task.start_date,
+                duration: 0,
+                progress: 0,
+                type: 'project', // Make it a project/group
+                open: true,
+                sprint: sprintName,
+                tasks: []
+            };
+        }
+        sprints[sprintName].tasks.push(task);
+    });
+    
+    // Build grouped structure
+    for (var sprintName in sprints) {
+        var sprint = sprints[sprintName];
+        var minDate = null;
+        var maxDate = null;
+        var totalProgress = 0;
+        
+        // Calculate sprint properties
+        sprint.tasks.forEach(function(task) {
+            if (!minDate || task.start_date < minDate) {
+                minDate = task.start_date;
+            }
+            var taskEnd = task.end_date || gantt.calculateEndDate(task.start_date, task.duration);
+            if (!maxDate || taskEnd > maxDate) {
+                maxDate = taskEnd;
+            }
+            totalProgress += task.progress;
+        });
+        
+        sprint.start_date = minDate;
+        sprint.end_date = maxDate;
+        sprint.duration = gantt.calculateDuration(minDate, maxDate);
+        sprint.progress = totalProgress / sprint.tasks.length;
+        
+        // Add sprint header
+        groupedData.push({
+            id: sprint.id,
+            text: sprint.text + ' (' + sprint.tasks.length + ' tasks)',
+            start_date: gantt.date.date_to_str(gantt.config.date_format)(sprint.start_date),
+            duration: sprint.duration,
+            progress: sprint.progress,
+            type: 'project',
+            open: true,
+            color: '#3498db' // Blue color for sprints
+        });
+        
+        // Add tasks under sprint
+        sprint.tasks.forEach(function(task) {
+            groupedData.push({
+                id: task.id,
+                text: task.text,
+                start_date: gantt.date.date_to_str(gantt.config.date_format)(task.start_date),
+                end_date: gantt.date.date_to_str(gantt.config.date_format)(task.end_date || gantt.calculateEndDate(task.start_date, task.duration)),
+                duration: task.duration,
+                progress: task.progress,
+                priority: task.priority,
+                color: task.color,
+                parent: sprint.id, // Set parent to sprint
+                sprint: task.sprint
+            });
+        });
+    }
+    
+    // Clear and reload with grouped data
+    gantt.clearAll();
+    gantt.parse({data: groupedData, links: []});
+    
+    console.log('Grouped by sprint successfully');
 }
 
 function clearGrouping() {
