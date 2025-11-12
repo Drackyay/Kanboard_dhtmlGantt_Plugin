@@ -72,6 +72,11 @@
             return html;
         };
 
+        // Display assignee name on the right side of the task bar
+        gantt.templates.rightside_text = function(start, end, task) {
+            return task.assignee ? String(task.assignee) : "";
+        };
+
         // Custom task class for better styling
         gantt.templates.task_class = function(start, end, task) {
             var classes = [];

@@ -9,6 +9,26 @@
     
     <div class="menu-inline" style="flex-shrink: 0;">
         <ul>
+            <!-- Group-by (CSP-safe: no inline JS; external listener will handle navigation) -->
+            <li>
+                <span class="icon fa-users"></span> <?= t('Group by') ?>
+                <select id="group-by-select"
+                        data-nav-base="<?= $this->url->href(
+                            'TaskGanttController',
+                            'show',
+                            array(
+                                'project_id' => $project['id'],
+                                'sorting'    => $sorting ?: 'board',
+                                'plugin'     => 'DhtmlGantt'
+                            )
+                        ) ?>">
+                    <option value="none"     <?= $cur === 'none' ? 'selected' : '' ?>><?= t('None') ?></option>
+                    <option value="group"    <?= $cur === 'group' ? 'selected' : '' ?>><?= t('Group') ?></option>
+                    <option value="assignee" <?= $cur === 'assignee' ? 'selected' : '' ?>><?= t('Assignee') ?></option>
+                    <option value="sprint"   <?= $cur === 'sprint' ? 'selected' : '' ?>><?= t('Sprint') ?></option>
+                </select>
+            </li>
+
             <!-- Sort by position -->
             <li <?= $sorting === 'board' ? 'class="active"' : '' ?>>
                 <?= $this->url->icon(
@@ -61,17 +81,15 @@
                 <i class="fa fa-plus"></i> <?= t('Add Task') ?>
             </button>
 
-            <!-- Group by Dropdown -->
-            <label style="margin-left: 15px; display: flex; align-items: center; gap: 5px;">
-                <i class="fa fa-users"></i>
-                <span><?= t('Group by') ?>:</span>
-                <select id="dhtmlx-group-by-select" class="btn" style="padding: 5px 10px; cursor: pointer;">
-                    <option value="none"><?= t('None') ?></option>
-                    <option value="assignee"><?= t('Assignee') ?></option>
-                    <option value="group"><?= t('User Group') ?></option>
-                    <option value="sprint"><?= t('Sprint') ?></option>
-                </select>
-            </label>
+            <!-- NEW: Group by Assignee -->
+            <button id="dhtmlx-group-assignee" class="btn" title="<?= t('Group by Assignee') ?>">
+                <i class="fa fa-users"></i> <?= t('Group by Assignee') ?>
+            </button>
+
+            <!-- NEW: Toggle Workload View -->
+            <button id="dhtmlx-toggle-resources" class="btn" title="<?= t('Toggle Workload View') ?>">
+                <i class="fa fa-bar-chart"></i> <?= t('Workload View') ?>
+            </button>
 
             <!-- Toggle: Move Dependencies -->
             <label class="dhtmlx-toggle" style="margin-left: 15px;">
@@ -137,30 +155,55 @@
                 <h3><?= t('Legend') ?></h3>
                 <div class="dhtmlx-legend">
                     <div class="dhtmlx-legend-item">
-                        <span class="dhtmlx-legend-color" style="background: #95a5a6;"></span>
-                        <span><?= t('Normal Priority') ?></span>
-                    </div>
-                    <div class="dhtmlx-legend-item">
-                        <span class="dhtmlx-legend-color" style="background: #3498db;"></span>
-                        <span><?= t('Low Priority') ?></span>
-                    </div>
-                    <div class="dhtmlx-legend-item">
-                        <span class="dhtmlx-legend-color" style="background: #f39c12;"></span>
-                        <span><?= t('Medium Priority') ?></span>
-                    </div>
-                    <div class="dhtmlx-legend-item">
-                        <span class="dhtmlx-legend-color" style="background: #e74c3c;"></span>
-                        <span><?= t('High Priority') ?></span>
-                    </div>
-                    <div class="dhtmlx-legend-item">
                         <span class="dhtmlx-legend-color" style="background: #27ae60;"></span>
                         <span><?= t('Milestone') ?></span>
                     </div>
-                    <div class="dhtmlx-legend-item">
-                        <span class="dhtmlx-legend-color" style="background: #9b59b6;"></span>
-                        <span><?= t('Sprint') ?></span>
-                    </div>
+                    
+                    <?php
+                    // Display Groups with Group_assign color generation
+                    $groups = $groups ?? [];
+                    
+                    // Function to generate colors using EXACT Group_assign algorithm
+                    function getGroupColorInTemplate($groupName) {
+                        // Use EXACT Group_assign CRC32 algorithm
+                        $code = dechex(crc32($groupName));
+                        $code = substr($code, 0, 6);
+                        return '#' . $code;
+                    }
+                    
+                    if (!empty($groups)):
+                    ?>
+                        <strong style="font-size: 11px; color: #666; display: block; margin-top: 10px; margin-bottom: 5px;">
+                            <?= t('User Groups (Fill Colors):') ?>
+                        </strong>
+                        <?php foreach ($groups as $group): ?>
+                            <?php 
+                            // Use Group_assign's color generation algorithm directly
+                            $groupColor = getGroupColorInTemplate($group['name']);
+                            ?>
+                            <div class="dhtmlx-legend-item">
+                                <span class="dhtmlx-legend-color" 
+                                      style="background: <?= $groupColor ?>; border: 2px solid #ddd;">
+                                </span>
+                                <span><?= $this->text->e($group['name']) ?></span>
+                            </div>
+                        <?php endforeach; ?>
+                    <?php else: ?>
+                        <div style="padding: 8px; background: #fff3cd; border-left: 3px solid #ffc107; margin-top: 10px; font-size: 12px;">
+                            ℹ️ <?= t('No user groups defined. Tasks without groups use default colors.') ?>
+                        </div>
+                    <?php endif; ?>
                 </div>
+            </div>
+        </div>
+
+        <!-- Custom Workload Panel -->
+        <div id="workload-panel" class="workload-panel">
+            <div class="workload-header">
+                <h4><?= t('Tasks per Person - Workload Summary') ?></h4>
+            </div>
+            <div id="workload-content" class="workload-content">
+                <p class="workload-loading"><?= t('Loading workload data...') ?></p>
             </div>
         </div>
     </div>
@@ -204,12 +247,117 @@
 .dhtmlx-legend { display: flex; flex-direction: column; gap: 5px; }
 .dhtmlx-legend-item { display: flex; align-items: center; gap: 8px; }
 .dhtmlx-legend-color { width: 16px; height: 16px; border-radius: 3px; }
-.gantt_task_line.dhtmlx-priority-high   { background: #e74c3c !important; border-color: #c0392b !important; }
-.gantt_task_line.dhtmlx-priority-medium { background: #f39c12 !important; border-color: #e67e22 !important; }
-.gantt_task_line.dhtmlx-priority-low    { background: #3498db !important; border-color: #2980b9 !important; }
-.gantt_task_line.dhtmlx-priority-normal { background: #95a5a6 !important; border-color: #7f8c8d !important; }
 .gantt_task_line.dhtmlx-readonly { opacity: 0.6; }
 .btn-dhtmlx-view.active { background-color: #667eea !important; color: white !important; }
 .dhtmlx-toggle { display: flex; align-items: center; gap: 5px; font-size: 13px; color: #333; cursor: pointer; }
 .dhtmlx-toggle input[type="checkbox"] { transform: scale(1.1); margin-right: 5px; }
+
+/* Workload Panel Styles */
+.workload-panel {
+    width: 100%;
+    background: #fff;
+    border-top: 2px solid #ddd;
+    max-height: 300px;
+    display: block;
+    transition: max-height 0.3s ease;
+    overflow: hidden;
+}
+
+.workload-panel.hidden {
+    max-height: 0;
+    border-top: none;
+}
+
+.workload-header {
+    background: #f8f9fa;
+    padding: 10px 15px;
+    border-bottom: 1px solid #ddd;
+}
+
+.workload-header h4 {
+    margin: 0;
+    font-size: 14px;
+    font-weight: bold;
+    color: #333;
+}
+
+.workload-content {
+    padding: 15px;
+    max-height: 250px;
+    overflow-y: auto;
+}
+
+.workload-loading {
+    text-align: center;
+    color: #999;
+    font-style: italic;
+}
+
+.workload-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.workload-table th {
+    background: #f0f0f0;
+    padding: 10px;
+    text-align: left;
+    font-weight: bold;
+    border-bottom: 2px solid #ddd;
+    font-size: 13px;
+}
+
+.workload-table td {
+    padding: 10px;
+    border-bottom: 1px solid #eee;
+    font-size: 13px;
+}
+
+.workload-table tr:hover {
+    background: #f9f9f9;
+}
+
+.workload-badge {
+    display: inline-block;
+    padding: 4px 12px;
+    border-radius: 12px;
+    font-weight: bold;
+    font-size: 12px;
+    min-width: 30px;
+    text-align: center;
+}
+
+.workload-available {
+    background: #d4edda;
+    color: #155724;
+}
+
+.workload-busy {
+    background: #fff3cd;
+    color: #856404;
+}
+
+.workload-overloaded {
+    background: #f8d7da;
+    color: #721c24;
+}
+
+.workload-task-list {
+    font-size: 11px;
+    color: #666;
+    margin-top: 5px;
+}
+
+.workload-task-item {
+    display: inline-block;
+    background: #e9ecef;
+    padding: 2px 8px;
+    margin: 2px;
+    border-radius: 3px;
+}
+
+#dhtmlx-toggle-resources.active {
+    background-color: #667eea !important;
+    color: white !important;
+}
 </style>

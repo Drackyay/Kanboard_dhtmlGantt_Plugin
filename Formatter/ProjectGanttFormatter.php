@@ -50,12 +50,12 @@ class ProjectGanttFormatter extends Base
             
         $duration = $this->calculateDuration($task);
         
-        // Get assignee name
+        // Get assignee name (prefer full name, fallback to username)
         $assignee = '';
         if (!empty($task['owner_id'])) {
             $user = $this->userModel->getById($task['owner_id']);
             if ($user) {
-                $assignee = $user['username'];
+                $assignee = !empty($user['name']) ? $user['name'] : ($user['username'] ?? '');
             }
         }
         

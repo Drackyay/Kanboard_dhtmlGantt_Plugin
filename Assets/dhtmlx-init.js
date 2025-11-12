@@ -324,7 +324,24 @@ document.addEventListener('DOMContentLoaded', function() {
         console.debug('Gantt container not found - skipping initialization (not on Gantt page)');
         return;
     }
-    // ✅ Old group-by dropdown removed (now using client-side dropdown in toolbar)
+    // --- Group-by dropdown: navigate with &group_by=<value> (CSP-safe) ---
+    if (!window.__groupByBound) {
+        window.__groupByBound = true;
+        var sel = document.getElementById('group-by-select');
+        if (sel) {
+          var base = sel.getAttribute('data-nav-base') || '';
+          sel.addEventListener('change', function () {
+            try {
+              var url = new URL(base, window.location.origin);
+              url.searchParams.set('group_by', sel.value);
+              window.location.assign(url.toString());
+            } catch (e) {
+              var glue = base.indexOf('?') === -1 ? '?' : '&';
+              window.location.assign(base + glue + 'group_by=' + encodeURIComponent(sel.value));
+            }
+          });
+        }
+      }
     
     console.log('Gantt container found, initializing DHtmlX Gantt...');
     
@@ -378,7 +395,7 @@ document.addEventListener('DOMContentLoaded', function() {
         console.warn('No task data found, loading empty chart');
         loadGanttData({data: [], links: []});
     }
-    // ✅ No initial grouping - user controls via dropdown
+    applyInitialGrouping();
 
     
     // Setup URLs from data attributes
@@ -431,18 +448,13 @@ function initDhtmlxGantt() {
     gantt.config.grid_width = 400;
     gantt.config.show_grid = true;
     
-    // ✅ TIME PRECISION: Allow precise time adjustments when dragging
-    gantt.config.round_dnd_dates = false;  // Don't round dates during drag-and-drop
-    gantt.config.time_step = 60;  // 60 minutes = 1 hour precision
-    gantt.config.duration_unit = "day";  // Duration is in days
-    gantt.config.duration_step = 1;  // Minimum duration step
-    
     // Enable plugins
     gantt.plugins({
         tooltip: true,
         keyboard_navigation: true,
-        undo: true
-        // NOTE: grouping and auto_scheduling are PRO features, not available in GPL
+        undo: true,
+        grouping: true
+        // NOTE: auto_scheduling is a PRO feature, not available in GPL
     });
     
     // Enable drag for links
@@ -482,8 +494,6 @@ function initDhtmlxGantt() {
         // Milestone takes priority over other styling
         if (task.is_milestone) {
             className += "milestone-block ";
-        } else if (task.task_type === 'sprint' || task.type === 'project') {
-            className += "sprint-block ";
         } else if (task.priority) {
             className += "dhtmlx-priority-" + task.priority + " ";
         }
@@ -500,43 +510,34 @@ function initDhtmlxGantt() {
         return "<span>" + Math.round(task.progress * 100) + "% </span>";
     };
     
-    // Task text template - show task name and assignee on the bar
+    // Task text template - show task name for regular tasks, "M" for milestones
     gantt.templates.task_text = function(start, end, task) {
         if (task.is_milestone) {
             return "M";
         }
-        // Show task name with assignee if available
-        if (task.assignee && task.assignee.trim() !== '' && task.assignee !== 'Unassigned') {
-            return task.text + ' (' + task.assignee + ')';
-        }
+        
         return task.text;
     };
     
-    // ✅ Show assignee name to the RIGHT of the bar
+    // Display assignee name on the right side of task bar
     gantt.templates.rightside_text = function(start, end, task) {
-        if (task.assignee && task.assignee.trim() !== '') {
+        if (task.assignee) {
             return task.assignee;
         }
         return "";
     };
     
-    // Tooltip template
+    // Update tooltip to show group information
     gantt.templates.tooltip_text = function(start, end, task) {
-        var tooltip = "<b>" + (task.is_milestone ? "Milestone" : "Task") + ":</b> " + task.text + "<br/>" +
+        var assigneeLabel = task.assignee || 'Unassigned';
+        var groupLabel = task.group_name || 'No Group';
+        
+        return "<b>Task:</b> " + task.text + "<br/>" +
+               "<b>Group:</b> <span style='font-weight:bold;'>" + groupLabel + "</span><br/>" +
+               "<b>Assigned to:</b> " + assigneeLabel + "<br/>" +
                "<b>Start:</b> " + gantt.templates.tooltip_date_format(start) + "<br/>" +
                "<b>End:</b> " + gantt.templates.tooltip_date_format(end) + "<br/>" +
-               "<b>Progress:</b> " + Math.round(task.progress * 100) + "%<br/>";
-        
-        if (!task.is_milestone) {
-            tooltip += "<b>Priority:</b> " + (task.priority || 'normal');
-        }
-        
-        // Add assignee info to tooltip
-        if (task.assignee && task.assignee.trim() !== '') {
-            tooltip += "<br/><b>Assignee:</b> " + task.assignee;
-        }
-        
-        return tooltip;
+               "<b>Progress:</b> " + Math.round(task.progress * 100) + "%";
     };
     //new
 
@@ -545,13 +546,11 @@ function initDhtmlxGantt() {
     // new code for lightbox + link to kb
     // Configure lightbox sections to add "View in Kanboard" button
 gantt.config.lightbox.sections = [
-    {name: "type", height: 22, map_to: "task_type", type: "select", options: [
-        {key: "task", label: "Task"},
-        {key: "milestone", label: "Milestone"},
-        {key: "sprint", label: "Sprint"}
+    {name: "type", height: 22, map_to: "is_milestone", type: "select", options: [
+        {key: false, label: "Task"},
+        {key: true, label: "Milestone"}
     ]},
     {name: "description", height: 38, map_to: "text", type: "textarea", focus: true},
-    {name: "tasks", height: 22, map_to: "child_tasks", type: "template"},
     {name: "group", height: 22, map_to: "group_id", type: "select", options: []},
     {name: "assignee", height: 22, map_to: "owner_id", type: "select", options: []},
     {name: "priority", height: 22, map_to: "priority", type: "select", options: [
@@ -566,7 +565,6 @@ gantt.config.lightbox.sections = [
 
 // Custom labels for lightbox sections
 gantt.locale.labels.section_type = "Type";
-gantt.locale.labels.section_tasks = "Tasks";
 gantt.locale.labels.section_group = "Group/Sprint";
 gantt.locale.labels.section_assignee = "Assign To";
 gantt.locale.labels.section_kanboard_link = "Quick Actions";
@@ -597,20 +595,14 @@ gantt.attachEvent("onBeforeLightbox", function(id) {
         task.group_id = 0;
     }
     
-    // Set task_type based on existing properties
-    if (!task.task_type) {
-        if (task.is_milestone) {
-            task.task_type = 'milestone';
-        } else if (task.type === 'project') {
-            task.task_type = 'sprint';
-        } else {
-            task.task_type = 'task';
-        }
-    }
+    // Always use type "task" for rendering (rectangular bars)
+    task.type = "task";
     
-    // Set child_tasks array if not exists
-    if (!task.child_tasks) {
-        task.child_tasks = [];
+    // Ensure is_milestone is properly set (convert 1/0 or "1"/"0" to boolean)
+    if (task.is_milestone === 1 || task.is_milestone === "1" || task.is_milestone === true) {
+        task.is_milestone = true;
+    } else if (task.is_milestone === undefined || task.is_milestone === null) {
+        task.is_milestone = false;
     }
     
     // Store isNewTask flag for later use
@@ -626,18 +618,6 @@ gantt.attachEvent("onBeforeLightbox", function(id) {
             } else {
                 lightbox.classList.remove('gantt-new-task');
                 console.log('Removed gantt-new-task class for existing task');
-            }
-            // Control Sprint Tasks visibility via CSS to avoid flash
-            if (task.task_type === 'sprint') {
-                lightbox.classList.add('gantt-show-sprint-tasks');
-            } else {
-                lightbox.classList.remove('gantt-show-sprint-tasks');
-            }
-            // Control Milestone visibility (hide group/assignee/priority) via CSS to avoid flash
-            if (task.task_type === 'milestone' || task.is_milestone === true) {
-                lightbox.classList.add('gantt-type-milestone');
-            } else {
-                lightbox.classList.remove('gantt-type-milestone');
             }
         }
     }, 0); // Use 0 delay for immediate execution
@@ -715,55 +695,42 @@ function setupLightboxFieldToggle(retryCount) {
     // Remove any existing listeners by cloning
     var newTypeSelect = typeSelect.cloneNode(true);
     
-    // Set the value on the CLONED element based on task properties
-    var taskType = task ? (task.task_type || (task.is_milestone ? 'milestone' : 'task')) : 'task';
-    newTypeSelect.value = taskType;
-    console.log('Set type select to:', taskType, 'for task:', taskId);
+    // Set the value on the CLONED element
+    if (shouldBeMilestone) {
+        newTypeSelect.value = 'true';
+        console.log('Set type select to Milestone for task:', taskId);
+    } else {
+        newTypeSelect.value = 'false';
+        console.log('Set type select to Task for task:', taskId);
+    }
     
     typeSelect.parentNode.replaceChild(newTypeSelect, typeSelect);
     typeSelect = newTypeSelect;
     
     // Function to toggle fields based on type
     var toggleFields = function() {
-        var selectedType = typeSelect.value; // "task", "milestone", or "sprint"
+        // Select dropdown value can be string "true"/"false" or boolean
+        var isMilestone = typeSelect.value === 'true' || typeSelect.value === true || typeSelect.value === 'milestone';
         
-        console.log('Toggling fields, type:', selectedType);
+        console.log('Toggling fields, isMilestone:', isMilestone, 'value:', typeSelect.value, 'type:', typeof typeSelect.value);
         
         // Scope to the lightbox markup
         var lightbox = document.querySelector('.gantt_cal_light');
         if (!lightbox) return;
 
-        // Find all sections
-        var allLabels = lightbox.querySelectorAll('.gantt_cal_lsection');
-        
-        // Hide/show Priority (hidden for Milestone and Sprint)
-        var hidePriority = (selectedType === 'milestone' || selectedType === 'sprint');
-        for (var i = 0; i < allLabels.length; i++) {
-            if (allLabels[i].textContent.trim() === 'Priority') {
-                var prLabel = allLabels[i];
-                var prContent = prLabel.nextElementSibling;
-                if (prLabel) prLabel.style.display = hidePriority ? 'none' : '';
-                if (prContent) prContent.style.display = hidePriority ? 'none' : '';
-                console.log('Priority hidden:', hidePriority);
-                break;
-            }
-        }
-        
-        // Control Tasks section with a class to avoid flash
-        if (selectedType === 'sprint') {
-            lightbox.classList.add('gantt-show-sprint-tasks');
+        // Hide/show Priority section (select with title="priority")
+        var prioritySelect = lightbox.querySelector('select[title="priority"]');
+        if (prioritySelect) {
+            var prContent = prioritySelect.closest('.gantt_cal_ltext') || prioritySelect.parentElement;
+            var prLabel = prContent && prContent.previousElementSibling && prContent.previousElementSibling.classList && prContent.previousElementSibling.classList.contains('gantt_cal_lsection') ? prContent.previousElementSibling : null;
+            if (prContent) prContent.style.display = isMilestone ? 'none' : '';
+            if (prLabel) prLabel.style.display = isMilestone ? 'none' : '';
+            console.log('Priority section hidden:', isMilestone, 'content:', !!prContent, 'label:', !!prLabel);
         } else {
-            lightbox.classList.remove('gantt-show-sprint-tasks');
-        }
-        // Toggle milestone class to hide group/assignee/priority without flicker
-        if (selectedType === 'milestone') {
-            lightbox.classList.add('gantt-type-milestone');
-        } else {
-            lightbox.classList.remove('gantt-type-milestone');
+            console.log('Priority select not found');
         }
 
-        // Hide duration input for Milestone (keep visible for Task and Sprint)
-        var hideDuration = (selectedType === 'milestone');
+        // Hide/show only the duration numeric input (keep start date selects visible)
         var durationCandidates = lightbox.querySelectorAll(
             '.gantt_time input[type="number"],\
              .gantt_time input[aria-label="Duration"],\
@@ -771,10 +738,11 @@ function setupLightboxFieldToggle(retryCount) {
              .gantt_time .gantt_duration input,\
              .gantt_time .gantt_duration_value'
         );
+        console.log('Duration numeric inputs found:', durationCandidates.length);
         durationCandidates.forEach(function(inp){
-            if (inp && inp.style) inp.style.display = hideDuration ? 'none' : '';
+            if (inp && inp.style) inp.style.display = isMilestone ? 'none' : '';
             var wrap = inp.closest('.gantt_duration, .gantt_duration_line, .gantt_time_duration');
-            if (wrap && wrap !== lightbox) wrap.style.display = hideDuration ? 'none' : '';
+            if (wrap && wrap !== lightbox) wrap.style.display = isMilestone ? 'none' : '';
         });
     };
     
@@ -915,45 +883,37 @@ function setupCascadingAssignmentDropdowns(retryCount) {
     groupSelect.addEventListener('change', filterAssignees);
 }
 
-// Handle task/milestone/sprint save
+// Handle milestone save to keep type as task and apply green color
 gantt.attachEvent("onLightboxSave", function(id, task, is_new) {
     console.log('Lightbox save, task:', task);
-    console.log('Task type:', task.task_type, 'owner_id:', task.owner_id, 'child_tasks:', task.child_tasks);
+    console.log('Task owner_id:', task.owner_id, 'group_id:', task.group_id, 'is_milestone:', task.is_milestone);
     
     // Ensure owner_id is properly set (convert string to integer if needed)
     if (task.owner_id !== undefined && task.owner_id !== null) {
         task.owner_id = parseInt(task.owner_id) || 0;
+        console.log('Converted owner_id to:', task.owner_id);
     }
     
-    // Validation: Only regular tasks must be assigned. Milestones and Sprints can be unassigned.
-    if (task.task_type === 'task' && (!task.owner_id || task.owner_id === 0)) {
+    // Validation: Task must be assigned to someone (cannot be Unassigned)
+    if (!task.owner_id || task.owner_id === 0) {
         alert('Error: Task must be assigned to a user. Please select someone from the "Assign To" dropdown.');
         console.error('Validation failed: Task must be assigned to a user');
         return false; // Prevent saving
     }
     
-    // Validation: Sprints must have at least one child task
-    if (task.task_type === 'sprint' && (!task.child_tasks || task.child_tasks.length === 0)) {
-        alert('Error: Sprint must contain at least one task. Please select tasks from the "Tasks" dropdown.');
-        console.error('Validation failed: Sprint must contain at least one task');
-        return false; // Prevent saving
-    }
+    // Always keep type as "task" for rectangular bars
+    task.type = "task";
     
-    // Set display type and color based on task_type
-    if (task.task_type === 'sprint') {
-        task.type = "project"; // DHtmlX displays this as a parent bar
-        task.color = "#9b59b6"; // Purple color for sprints
-        task.is_milestone = false;
-        console.log('Set Sprint with purple color');
-    } else if (task.task_type === 'milestone') {
-        task.type = "task";
-        task.color = "#27ae60"; // Green for milestones
+    // Convert is_milestone to proper boolean/string format
+    // DHtmlX select returns the key value (true/false as boolean, or "true"/"false" as string)
+    if (task.is_milestone === true || task.is_milestone === "true" || task.is_milestone === 1 || task.is_milestone === "1") {
         task.is_milestone = true;
-        console.log('Set Milestone with green color');
+        task.color = "#27ae60";
+        console.log('Set milestone color to green for task:', id);
     } else {
-        task.type = "task";
         task.is_milestone = false;
-        console.log('Set regular Task');
+        // Reset color if changed from milestone to task (let server/priority determine color)
+        console.log('Task is not a milestone, keeping original color');
     }
     
     return true; // Allow saving
@@ -961,208 +921,10 @@ gantt.attachEvent("onLightboxSave", function(id, task, is_new) {
 
 gantt.form_blocks["template"] = {
     render: function(sns) {
-        return "<div class='gantt_cal_ltext' style='height:" + sns.height + "px;'></div>";
+        return "<div class='dhtmlx_cal_ltext' style='height:" + sns.height + "px;'></div>";
     },
     set_value: function(node, value, task, section) {
         var projectId = document.getElementById('dhtmlx-gantt-chart').getAttribute('data-project-id');
-        
-        // Handle Tasks multi-select (for Sprints)
-        if (section.name === 'tasks') {
-            node.innerHTML = '';
-            // mark this content node so CSS can target it (hide/show without flash)
-            node.classList.add('sprint-tasks-block');
-            
-            // Get all tasks in the project
-            var allTasks = gantt.getTaskByTime();
-            var currentTaskId = task.id;
-            var selectedTasks = task.child_tasks || [];
-            // expose selection to get_value
-            node._selectedTasks = Array.isArray(selectedTasks) ? selectedTasks.slice() : [];
-            
-            // Create container
-            var container = document.createElement('div');
-            container.style.cssText = 'position: relative; width: 100%;';
-            
-            // Create search input as the main dropdown trigger
-            var searchInput = document.createElement('input');
-            searchInput.type = 'text';
-            searchInput.placeholder = 'Search and select tasks...';
-            searchInput.style.cssText = 'width: 100%; padding: 6px; border: 1px solid #ccc; box-sizing: border-box; background: white;';
-            
-            // Create dropdown panel (hidden by default)
-            var dropdownPanel = document.createElement('div');
-            dropdownPanel.style.cssText = 'display: none; position: absolute; left: 0; right: 0; width: 100%; max-height: 200px; overflow-y: auto; border: 1px solid #ccc; border-top: 1px solid #ddd; background: white; z-index: 1000; box-shadow: 0 2px 8px rgba(0,0,0,0.15);';
-            
-            // Store task items for filtering
-            var taskItems = [];
-            var taskMap = {};
-            
-            if (allTasks.length === 0) {
-                dropdownPanel.innerHTML = '<p style="color: #999; padding: 10px; margin: 0;">No tasks available</p>';
-            } else {
-                allTasks.forEach(function(t) {
-                    // Don't include the current task itself or other sprints
-                    if (t.id === currentTaskId || t.task_type === 'sprint') return;
-                    
-                    taskMap[t.id] = t;
-                    
-                    var option = document.createElement('div');
-                    option.style.cssText = 'padding: 8px 12px; cursor: pointer; border-bottom: 1px solid #f0f0f0;';
-                    option.textContent = t.text + ' (' + (t.assignee || 'Unassigned') + ')';
-                    option.dataset.taskId = t.id;
-                    option.dataset.taskText = t.text.toLowerCase();
-                    option.dataset.taskAssignee = (t.assignee || 'unassigned').toLowerCase();
-                    
-                    if (selectedTasks.indexOf(t.id) !== -1) {
-                        option.style.backgroundColor = '#e3f2fd';
-                        option.style.fontWeight = 'bold';
-                    }
-                    
-                    option.addEventListener('click', function() {
-                        var taskId = parseInt(this.dataset.taskId);
-                        var idx = selectedTasks.indexOf(taskId);
-                        
-                        if (idx === -1) {
-                            // Add to selection
-                            selectedTasks.push(taskId);
-                            this.style.backgroundColor = '#e3f2fd';
-                            this.style.fontWeight = 'bold';
-                        } else {
-                            // Remove from selection
-                            selectedTasks.splice(idx, 1);
-                            this.style.backgroundColor = 'transparent';
-                            this.style.fontWeight = 'normal';
-                        }
-                        
-                        // sync for get_value
-                        node._selectedTasks = selectedTasks.slice();
-                        updateSelectedDisplay();
-                    });
-                    
-                    option.addEventListener('mouseover', function() {
-                        if (selectedTasks.indexOf(parseInt(this.dataset.taskId)) === -1) {
-                            this.style.backgroundColor = '#f8f9fa';
-                        }
-                    });
-                    
-                    option.addEventListener('mouseout', function() {
-                        if (selectedTasks.indexOf(parseInt(this.dataset.taskId)) === -1) {
-                            this.style.backgroundColor = 'transparent';
-                        }
-                    });
-                    
-                    dropdownPanel.appendChild(option);
-                    taskItems.push(option);
-                });
-            }
-            
-            // Open dropdown when search input is focused or clicked
-            searchInput.addEventListener('focus', function() {
-                dropdownPanel.style.display = 'block';
-            });
-            
-            searchInput.addEventListener('click', function(e) {
-                e.stopPropagation();
-                dropdownPanel.style.display = 'block';
-            });
-            
-            // Search functionality - filters as you type
-            searchInput.addEventListener('input', function() {
-                dropdownPanel.style.display = 'block'; // Open when typing
-                var searchTerm = this.value.toLowerCase();
-                taskItems.forEach(function(item) {
-                    var taskText = item.dataset.taskText || '';
-                    var taskAssignee = item.dataset.taskAssignee || '';
-                    var matches = taskText.indexOf(searchTerm) !== -1 || taskAssignee.indexOf(searchTerm) !== -1;
-                    item.style.display = matches ? '' : 'none';
-                });
-            });
-            
-            // Close dropdown when clicking outside
-            document.addEventListener('click', function(e) {
-                if (!container.contains(e.target)) {
-                    dropdownPanel.style.display = 'none';
-                }
-            });
-            
-            // Selected tasks display (badges)
-            var selectedDisplay = document.createElement('div');
-            selectedDisplay.style.cssText = 'margin-top: 8px;';
-            
-            function updateSelectedDisplay() {
-                selectedDisplay.innerHTML = '';
-                // ensure current selection is available to get_value
-                node._selectedTasks = selectedTasks.slice();
-                
-                // Find the parent row and lightbox for height adjustment
-                var parentRow = node.closest('.gantt_cal_light_wide');
-                
-                if (selectedTasks.length === 0) {
-                    selectedDisplay.style.display = 'none';
-                    // Reset to normal height
-                    if (parentRow) {
-                        parentRow.style.height = 'auto';
-                    }
-                    node.style.height = '32px';
-                } else {
-                    selectedDisplay.style.display = 'block';
-                    // Calculate needed height for badges
-                    var badgeRows = Math.ceil(selectedTasks.length / 3);
-                    var neededHeight = 32 + 8 + (badgeRows * 28); // input + gap + badges
-                    
-                    node.style.height = neededHeight + 'px';
-                    if (parentRow) {
-                        parentRow.style.height = 'auto';
-                    }
-                    
-                    selectedTasks.forEach(function(taskId) {
-                        var t = taskMap[taskId];
-                        if (!t) return;
-                        
-                        var badge = document.createElement('span');
-                        badge.style.cssText = 'display: inline-block; background: #2196F3; color: white; padding: 4px 8px; margin: 2px; border-radius: 3px; font-size: 12px;';
-                        badge.textContent = t.text;
-                        
-                        var removeBtn = document.createElement('span');
-                        removeBtn.textContent = ' ×';
-                        removeBtn.style.cssText = 'margin-left: 4px; cursor: pointer; font-weight: bold;';
-                        removeBtn.addEventListener('click', function(e) {
-                            e.stopPropagation();
-                            var idx = selectedTasks.indexOf(taskId);
-                            if (idx !== -1) {
-                                selectedTasks.splice(idx, 1);
-                                // sync for get_value
-                                node._selectedTasks = selectedTasks.slice();
-                                updateSelectedDisplay();
-                                // Update option styling
-                                taskItems.forEach(function(item) {
-                                    if (parseInt(item.dataset.taskId) === taskId) {
-                                        item.style.backgroundColor = 'transparent';
-                                        item.style.fontWeight = 'normal';
-                                    }
-                                });
-                            }
-                        });
-                        
-                        badge.appendChild(removeBtn);
-                        selectedDisplay.appendChild(badge);
-                    });
-                }
-            }
-            
-            container.appendChild(searchInput);
-            container.appendChild(dropdownPanel);
-            container.appendChild(selectedDisplay);
-            
-            node.appendChild(container);
-            
-            // Initialize selected display
-            updateSelectedDisplay();
-            
-            return;
-        }
-        
-        // Handle Kanboard link button
         var taskId = task.id;
         
         // Build the Kanboard task view URL
@@ -1189,13 +951,6 @@ gantt.form_blocks["template"] = {
         node.appendChild(button);
     },
     get_value: function(node, task, section) {
-        // Handle Tasks multi-select value retrieval
-        if (section.name === 'tasks') {
-            // Read the live selection stored by set_value
-            var selected = node && Array.isArray(node._selectedTasks) ? node._selectedTasks : [];
-            // ensure integers
-            return selected.map(function(v){ return parseInt(v, 10); }).filter(function(v){ return !isNaN(v); });
-        }
         return task[section.map_to];
     },
     focus: function(node) {
@@ -1483,21 +1238,37 @@ function moveSuccessorTasks(taskId, timeDiff) {
 function loadGanttData(data) {
     console.log('Loading Gantt data...', data);
     
+    // Handle both old and new data formats
+    var tasks, links, resources;
+    
     if (data && data.data) {
-        console.log('Using data.data format, tasks:', data.data.length);
-        gantt.parse(data);
+        tasks = data.data;
+        links = data.links || [];
+        resources = data.resources || [];
+        console.log('Using data.data format, tasks:', tasks.length, 'resources:', resources.length);
+        gantt.parse({data: tasks, links: links});
     } else if (Array.isArray(data)) {
-        console.log('Using array format, tasks:', data.length);
-        gantt.parse({data: data, links: []});
+        tasks = data;
+        links = [];
+        resources = [];
+        console.log('Using array format, tasks:', tasks.length);
+        gantt.parse({data: tasks, links: []});
     } else {
+        tasks = [];
+        links = [];
+        resources = [];
         console.log('No valid data, creating empty gantt');
         gantt.parse({data: [], links: []});
     }
+    
     gantt.eachTask(function (t) {
         if (t.parent === undefined || t.parent === null) {
             t.parent = 0;       // treat as top-level
         }
     });
+    
+    // Update workload panel
+    updateWorkloadPanel(tasks, resources);
     
     updateStatistics();
     // ✅ Auto-adjust parent durations after parsing data
@@ -1506,6 +1277,81 @@ function loadGanttData(data) {
     }, 100);
 }
 
+// Function to populate custom workload panel
+function updateWorkloadPanel(tasks, resources) {
+    var workloadContent = document.getElementById('workload-content');
+    if (!workloadContent) return;
+    
+    // Group tasks by person
+    var workloadMap = {};
+    
+    tasks.forEach(function(task) {
+        var ownerId = task.owner_id || 0;
+        var assignee = task.assignee || 'Unassigned';
+        
+        if (!workloadMap[ownerId]) {
+            workloadMap[ownerId] = {
+                name: assignee,
+                tasks: [],
+                taskCount: 0
+            };
+        }
+        
+        workloadMap[ownerId].tasks.push({
+            id: task.id,
+            text: task.text,
+            start: task.start_date,
+            end: task.end_date
+        });
+        workloadMap[ownerId].taskCount++;
+    });
+    
+    // Build HTML table
+    var html = '<table class="workload-table">';
+    html += '<thead><tr>';
+    html += '<th>Person</th>';
+    html += '<th style="text-align: center;">Task Count</th>';
+    html += '<th style="text-align: center;">Workload</th>';
+    html += '<th>Tasks</th>';
+    html += '</tr></thead>';
+    html += '<tbody>';
+    
+    var workloadEntries = Object.values(workloadMap);
+    
+    if (workloadEntries.length === 0) {
+        html += '<tr><td colspan="4" style="text-align: center; padding: 20px; color: #999;">No tasks assigned</td></tr>';
+    } else {
+        workloadEntries.forEach(function(person) {
+            var badgeClass = 'workload-available';
+            var statusText = 'Available';
+            
+            if (person.taskCount > 5) {
+                badgeClass = 'workload-overloaded';
+                statusText = 'Overloaded';
+            } else if (person.taskCount > 2) {
+                badgeClass = 'workload-busy';
+                statusText = 'Busy';
+            }
+            
+            html += '<tr>';
+            html += '<td><strong>' + person.name + '</strong></td>';
+            html += '<td style="text-align: center;"><span class="workload-badge ' + badgeClass + '">' + person.taskCount + '</span></td>';
+            html += '<td style="text-align: center;"><span class="' + badgeClass + '" style="font-size: 11px;">' + statusText + '</span></td>';
+            html += '<td><div class="workload-task-list">';
+            
+            person.tasks.forEach(function(task) {
+                html += '<span class="workload-task-item">' + task.text + '</span>';
+            });
+            
+            html += '</div></td>';
+            html += '</tr>';
+        });
+    }
+    
+    html += '</tbody></table>';
+    
+    workloadContent.innerHTML = html;
+}
 
 //new
 // Simple zoom configuration
@@ -1742,8 +1588,9 @@ function setupGanttEventHandlers() {
                 task.color = "#27ae60";
             }
             
-            // Update statistics
+            // Update statistics and workload
             updateStatistics();
+            updateWorkloadPanel(gantt.getTaskByTime(), []);
             
             // ✅ Check if this is a subtask (has a parent)
             var parentTaskId = task.parent;
@@ -1754,12 +1601,6 @@ function setupGanttEventHandlers() {
             }
             
             // Send create request to server including all fields
-            // ✅ Format dates as strings to preserve exact time
-            var formattedStartDate = gantt.date.date_to_str(gantt.config.date_format)(task.start_date);
-            var formattedEndDate = gantt.date.date_to_str(gantt.config.date_format)(task.end_date);
-            
-            console.log('Creating task with times:', formattedStartDate, '→', formattedEndDate);
-            
             fetch(window.ganttUrls.create, {
                 method: 'POST',
                 headers: {
@@ -1767,12 +1608,10 @@ function setupGanttEventHandlers() {
                 },
                 body: JSON.stringify({
                     text: task.text,
-                    start_date: formattedStartDate,
-                    end_date: formattedEndDate,
+                    start_date: task.start_date,
+                    end_date: task.end_date,
                     priority: task.priority || 'normal',
                     owner_id: task.owner_id || 0,
-                    task_type: task.task_type || 'task',
-                    child_tasks: task.child_tasks || [],
                     is_milestone: task.is_milestone ? 1 : 0
                 })
             })
@@ -1867,14 +1706,14 @@ function setupGanttEventHandlers() {
                 gantt.refreshTask(id);
             }
         
-            // If this task has a parent, recalc that parent’s span (unchanged behavior)
+            // If this task has a parent, recalc that parent's span (unchanged behavior)
             if (task.parent) {
                 console.log('Refreshing parent after child update:', task.parent);
                 recalcParentDuration(task);
                 gantt.refreshTask(task.parent, true);
             }
         
-            // Queue save to backend (unchanged)
+            // Queue save to backend - include all fields with time precision formatting
             tasksToSave[id] = {
                 id: id,
                 text: task.text,
@@ -1887,7 +1726,8 @@ function setupGanttEventHandlers() {
                 is_milestone: task.is_milestone ? 1 : 0,
                 progress: task.progress || 0  // ✅ Save progress value
             };
-        
+            
+            // Debounce: wait for auto-scheduling to complete before saving
             clearTimeout(saveTimeout);
             saveTimeout = setTimeout(function() {
                 saveQueuedTasks();
@@ -1915,17 +1755,18 @@ function setupGanttEventHandlers() {
                 })
                 .then(response => response.json())
                 .then(data => {
-                if (data.result !== 'ok') {
-                    console.error('Failed to save task:', data.message);
-                }
-            })
-            .catch(error => {
-                console.error('Error saving task:', error);
+                    if (data.result !== 'ok') {
+                        console.error('Failed to save task:', data.message);
+                    }
+                })
+                .catch(error => {
+                    console.error('Error saving task:', error);
                 });
             }
             
-            // Clear the queue
+            // Clear the queue and update workload
             tasksToSave = {};
+            updateWorkloadPanel(gantt.getTaskByTime(), []);
         }
         
         // Handle task deletion
@@ -1947,6 +1788,11 @@ function setupGanttEventHandlers() {
                 console.log('Task deletion response:', data);
                 if (data.result !== 'ok') {
                     console.error('Failed to delete task:', data.message);
+                } else {
+                    // Update workload after successful deletion
+                    setTimeout(function() {
+                        updateWorkloadPanel(gantt.getTaskByTime(), []);
+                    }, 100);
                 }
             })
             .catch(error => {
@@ -2122,8 +1968,6 @@ function setupGanttEventHandlers() {
     
     // Note: recalcParentDuration and recalcAllParentDurations moved to global scope
 
-
-
 /**
  * ✅ DYNAMIC DATA RELOAD FUNCTION
  * Reloads fresh data from server to ensure chart is always in sync
@@ -2184,7 +2028,7 @@ function fallbackRefresh() {
     console.log('Using fallback refresh - reloading page...');
     // As last resort, reload the entire page to get fresh data
     window.location.reload();
-    }
+}
     
     // Toolbar event handlers
     var addTaskBtn = document.getElementById('dhtmlx-add-task');
@@ -2237,442 +2081,21 @@ function fallbackRefresh() {
         });
     }
 
-// ✅ GROUP BY DROPDOWN - Manual grouping (GPL version doesn't have gantt.groupBy())
-var groupBySelect = document.getElementById('dhtmlx-group-by-select');
-var originalTasksData = null;
-var currentGroupMode = 'none';
-
-if (groupBySelect) {
-    console.log('✅ Group-by dropdown found, attaching listener');
-    
-    groupBySelect.addEventListener('change', function() {
-        var mode = this.value;
-        console.log('🔄 Group by changed to:', mode);
-        
-        if (mode === 'none') {
-            // Clear grouping - restore original data
-            clearManualGrouping();
-        } else if (mode === 'sprint') {
-            applySprintOnlyView();
+var groupByAssigneeBtn = document.getElementById('dhtmlx-group-assignee');
+if (groupByAssigneeBtn) {
+    var isGrouped = false;
+    groupByAssigneeBtn.addEventListener('click', function() {
+        if (!isGrouped) {
+            groupByAssignee();
+            this.classList.add('active');
+            isGrouped = true;
         } else {
-            // Apply manual grouping
-            applyManualGrouping(mode);
+            clearGrouping();
+            this.classList.remove('active');
+            isGrouped = false;
         }
     });
-} else {
-    console.warn('⚠️ Group-by dropdown NOT found (#dhtmlx-group-by-select)');
-}
-
-function clearManualGrouping() {
-    console.log('🔄 Clearing grouping...');
-    
-    if (originalTasksData) {
-        gantt.clearAll();
-        gantt.parse(originalTasksData);
-        currentGroupMode = 'none';
-        console.log('✅ Grouping cleared, restored original data');
-    } else {
-        console.log('⚠️ No original data to restore');
-    }
-}
-
-function applyManualGrouping(mode) {
-    console.log('🔄 Applying grouping by:', mode);
-    
-    // Explain what each mode does
-    if (mode === 'assignee') {
-        console.log('   → Groups tasks by who they are assigned to (username)');
-    } else if (mode === 'group') {
-        console.log('   → Groups tasks by the Kanboard User Group of the assignee (e.g., Frontend, Backend, Administrators)');
-    }
-    
-    // Store original data if not already stored
-    if (!originalTasksData || currentGroupMode === 'none') {
-        originalTasksData = gantt.serialize();
-        console.log('💾 Stored original task data:', originalTasksData.data.length, 'tasks');
-    }
-    
-    currentGroupMode = mode;
-    
-    var tasks = gantt.getTaskByTime();
-    console.log('📋 Total tasks to group:', tasks.length);
-    
-    var groups = {};
-    var groupedData = [];
-    var groupIdCounter = 100000; // High number to avoid ID conflicts
-    
-    var defaultLabel = mode === 'assignee' ? 'Unassigned' : 
-                      mode === 'group' ? 'Ungrouped' : 
-                      'No Sprint';
-    
-    // First pass: collect groups
-    var sampleShown = false;
-    tasks.forEach(function(task) {
-        // Skip internal group/project tasks created by previous grouping
-        if (task.type === 'project' && task.id >= 100000) {
-            return;
-        }
-        
-        // Show sample task data once for debugging
-        if (!sampleShown) {
-            console.log('📄 Sample task data:', {
-                id: task.id,
-                text: task.text,
-                assignee: task.assignee,
-                group: task.group,
-                sprint: task.sprint,
-                start_date: task.start_date
-            });
-            sampleShown = true;
-        }
-        
-        var groupKey = task[mode] || defaultLabel;
-        
-        if (!groups[groupKey]) {
-            groups[groupKey] = {
-                id: groupIdCounter++,
-                text: '📁 ' + groupKey,
-                start_date: task.start_date,
-                duration: 0,
-                parent: 0,
-                type: 'project',
-                open: true,
-                readonly: true,
-                tasks: []
-            };
-        }
-        
-        groups[groupKey].tasks.push(task);
-        
-        // Update group start/end dates
-        if (new Date(task.start_date) < new Date(groups[groupKey].start_date)) {
-            groups[groupKey].start_date = task.start_date;
-        }
-    });
-    
-    // ✅ Sort tasks within each group by start_date (earliest first)
-    for (var groupKey in groups) {
-        groups[groupKey].tasks.sort(function(a, b) {
-            return new Date(a.start_date) - new Date(b.start_date);
-        });
-    }
-    
-    // Second pass: build grouped data structure
-    for (var groupKey in groups) {
-        var group = groups[groupKey];
-        groupedData.push({
-            id: group.id,
-            text: group.text,
-            start_date: group.start_date,
-            duration: group.duration,
-            parent: 0,
-            type: 'project',
-            open: true,
-            readonly: true
-        });
-        
-        // Add all tasks under this group
-        group.tasks.forEach(function(task) {
-            groupedData.push({
-                id: task.id,
-                text: task.text,
-                start_date: task.start_date,
-                end_date: task.end_date,
-                duration: task.duration,
-                progress: task.progress,
-                priority: task.priority,
-                color: task.color,
-                parent: group.id, // Set parent to group
-                assignee: task.assignee,
-                group: task.group,
-                sprint: task.sprint,
-                owner_id: task.owner_id,
-                is_milestone: task.is_milestone,
-                type: 'task',
-                open: true
-            });
-        });
-    }
-    
-    console.log('📊 Created', Object.keys(groups).length, 'groups with', tasks.length, 'tasks');
-    
-    // Clear and reload with grouped data
-    gantt.clearAll();
-    gantt.parse({data: groupedData, links: originalTasksData.links || []});
-    
-    console.log('✅ Grouping applied successfully');
-}
-
-/**
- * Show only Sprints and their direct children (using existing parent relations)
- */
-function applySprintOnlyView() {
-    console.log('🔄 Applying Sprint-only view (sprints + direct children)');
-    if (!originalTasksData || currentGroupMode === 'none') {
-        originalTasksData = gantt.serialize();
-        console.log('💾 Stored original task data:', originalTasksData.data.length, 'tasks');
-    }
-    currentGroupMode = 'sprint';
-    
-    var tasks = gantt.getTaskByTime();
-    var idToTask = {};
-    tasks.forEach(function(t){ idToTask[t.id] = t; });
-    
-    var data = [];
-    var include = {};
-    
-    // First: include all sprint tasks
-    tasks.forEach(function(t){
-        if (t.task_type === 'sprint' || t.type === 'project') {
-            include[t.id] = true;
-            // keep sprint bars as-is
-            data.push({
-                id: t.id,
-                text: t.text,
-                start_date: t.start_date,
-                end_date: t.end_date,
-                duration: t.duration,
-                progress: t.progress,
-                priority: t.priority,
-                color: t.color,
-                owner_id: t.owner_id,
-                assignee: t.assignee,
-                group: t.group,
-                sprint: t.sprint,
-                is_milestone: t.is_milestone,
-                type: 'project',
-                parent: 0,
-                open: true
-            });
-        }
-    });
-    
-    // Second: attach direct children under each sprint
-    tasks.forEach(function(t){
-        if (t.parent && include[t.parent]) {
-            include[t.id] = true;
-            data.push({
-                id: t.id,
-                text: t.text,
-                start_date: t.start_date,
-                end_date: t.end_date,
-                duration: t.duration,
-                progress: t.progress,
-                priority: t.priority,
-                color: t.color,
-                owner_id: t.owner_id,
-                assignee: t.assignee,
-                group: t.group,
-                sprint: t.sprint,
-                is_milestone: t.is_milestone,
-                type: 'task',
-                parent: t.parent,
-                open: true
-            });
-        }
-    });
-    
-    // Filter links to included tasks only
-    var links = (gantt.getLinks() || []).filter(function(l){
-        return include[l.source] && include[l.target];
-    });
-    
-    // Reload chart
-    gantt.clearAll();
-    gantt.parse({ data: data, links: links });
-    console.log('✅ Sprint-only view applied:', data.length, 'tasks');
-}
-
-/**
- * ❌ SPRINT GROUPING - REMOVED (Default mode already shows parent-child structure)
- * Kanboard's internal links naturally create parent-child hierarchy,
- * so sprint grouping is redundant with the default view.
- */
-/*
-function applySprintGrouping() {
-    console.log('🎯 Applying sprint-based grouping using Kanboard internal links...');
-    
-    var allTasks = gantt.getTaskByTime();
-    var allLinks = originalTasksData.links || gantt.getLinks() || [];
-    var groupedData = [];
-    var groupIdCounter = 100000;
-    var processedTasks = {};
-    
-    console.log('📊 Found', allLinks.length, 'total links');
-    
-    // Build parent-child map from links
-    // Kanboard link types (need to identify "is a child of" and "is a parent of")
-    var childToParent = {}; // child_id -> parent_id
-    var parentToChildren = {}; // parent_id -> [child_ids]
-    var linkTypeCount = {};
-    
-    // First pass: analyze all link types
-    allLinks.forEach(function(link) {
-        var linkType = link.type || 'unknown';
-        linkTypeCount[linkType] = (linkTypeCount[linkType] || 0) + 1;
-    });
-    
-    console.log('📊 Link types found:', linkTypeCount);
-    
-    // Second pass: process parent-child links only
-    allLinks.forEach(function(link) {
-        var sourceId = parseInt(link.source);
-        var targetId = parseInt(link.target);
-        var linkType = link.type;
-        
-        console.log('  🔗 Link:', sourceId, '→', targetId, 'type:', linkType);
-        
-        // Kanboard link relationships:
-        // "is a child of": source (child) → target (parent)
-        // "is a parent of": source (parent) → target (child)
-        
-        // We need to identify which type value corresponds to these
-        // Let's handle both directions and log them
-        
-        // For "is a child of": source is child, target is parent
-        if (!parentToChildren[targetId]) {
-            parentToChildren[targetId] = [];
-        }
-        if (!parentToChildren[targetId].includes(sourceId)) {
-            parentToChildren[targetId].push(sourceId);
-        }
-        childToParent[sourceId] = targetId;
-        
-        console.log('    → Treating as: Task', sourceId, 'is child of Task', targetId);
-    });
-    
-    console.log('📋 Parent tasks (blocks others):', Object.keys(parentToChildren).length);
-    console.log('📋 Child tasks (blocked by others):', Object.keys(childToParent).length);
-    
-    // Helper: Check if task has children via links
-    function hasChildren(taskId) {
-        return parentToChildren[taskId] && parentToChildren[taskId].length > 0;
-    }
-    
-    // Helper: Get all children of a task via links
-    function getChildren(taskId) {
-        var childIds = parentToChildren[taskId] || [];
-        return allTasks.filter(function(t) {
-            return childIds.indexOf(parseInt(t.id)) !== -1;
-        }).sort(function(a, b) {
-            return new Date(a.start_date) - new Date(b.start_date);
-        });
-    }
-    
-    // Helper: Check if task is a child
-    function isChildTask(taskId) {
-        return childToParent[taskId] !== undefined;
-    }
-    
-    console.log('📊 Analyzing task structure...');
-    var parentCount = 0;
-    var standaloneCount = 0;
-    var childCount = 0;
-    
-    // Process all tasks
-    allTasks.forEach(function(task) {
-        // Skip if already processed (e.g., as a child)
-        if (processedTasks[task.id]) return;
-        
-        // Skip internal group tasks from previous grouping
-        if (task.type === 'project' && task.id >= 100000) return;
-        
-        var taskId = parseInt(task.id);
-        var isChild = isChildTask(taskId);
-        var isParent = hasChildren(taskId);
-        
-        if (isChild) {
-            // Skip child tasks - they'll be processed with their parent
-            childCount++;
-            return;
-        }
-        
-        if (isParent) {
-            // Parent task: Create sprint group
-            parentCount++;
-            var sprintGroupId = groupIdCounter++;
-            
-            // Add sprint header (parent task as group)
-            groupedData.push({
-                id: sprintGroupId,
-                text: '🎯 ' + task.text,
-                start_date: task.start_date,
-                duration: 0,
-                parent: 0,
-                type: 'project',
-                open: true,
-                readonly: true
-            });
-            
-            processedTasks[task.id] = true;
-            
-            // Add all children under this sprint
-            var children = getChildren(taskId);
-            children.forEach(function(child) {
-                groupedData.push({
-                    id: child.id,
-                    text: child.text,
-                    start_date: child.start_date,
-                    end_date: child.end_date,
-                    duration: child.duration,
-                    progress: child.progress,
-                    priority: child.priority,
-                    color: child.color,
-                    parent: sprintGroupId,
-                    assignee: child.assignee,
-                    group: child.group,
-                    sprint: child.sprint,
-                    owner_id: child.owner_id,
-                    is_milestone: child.is_milestone,
-                    type: 'task',
-                    open: true
-                });
-                processedTasks[child.id] = true;
-            });
-            
-            console.log('  📁 Sprint:', task.text, '(' + children.length + ' tasks)');
-            
-        } else {
-            // Standalone task: Just add the task itself (no sprint header)
-            standaloneCount++;
-            
-            groupedData.push({
-                id: task.id,
-                text: task.text,
-                start_date: task.start_date,
-                end_date: task.end_date,
-                duration: task.duration,
-                progress: task.progress,
-                priority: task.priority,
-                color: task.color,
-                parent: 0,  // Top-level
-                assignee: task.assignee,
-                group: task.group,
-                sprint: task.sprint,
-                owner_id: task.owner_id,
-                is_milestone: task.is_milestone,
-                type: 'task',
-                open: true
-            });
-            
-            processedTasks[task.id] = true;
-            console.log('  📌 Standalone task:', task.text);
-        }
-    });
-    
-    console.log('📊 Sprint Summary:');
-    console.log('   • Parent sprints (with children):', parentCount);
-    console.log('   • Standalone sprints:', standaloneCount);
-    console.log('   • Total child tasks:', childCount);
-    console.log('   • Total sprint groups:', parentCount + standaloneCount);
-    
-    // Clear and reload with sprint-grouped data
-    gantt.clearAll();
-    gantt.parse({data: groupedData, links: originalTasksData.links || []});
-    
-    console.log('✅ Sprint grouping applied successfully');
-}
-*/
+}//NEWNEW
 
     
     // ✅ Expand/Collapse toggle button
@@ -2746,6 +2169,30 @@ function applySprintGrouping() {
         updateStatistics();
     });
 
+    // Toggle resource/workload view button handler
+    var toggleResourcesBtn = document.getElementById('dhtmlx-toggle-resources');
+    if (toggleResourcesBtn) {
+        var resourcesVisible = true; // Start visible by default
+        toggleResourcesBtn.classList.add('active'); // Start in active state
+        
+        toggleResourcesBtn.addEventListener('click', function() {
+            var workloadPanel = document.getElementById('workload-panel');
+            
+            if (workloadPanel) {
+                resourcesVisible = !resourcesVisible;
+                
+                if (resourcesVisible) {
+                    // Show workload panel
+                    workloadPanel.classList.remove('hidden');
+                    this.classList.add('active');
+                } else {
+                    // Hide workload panel
+                    workloadPanel.classList.add('hidden');
+                    this.classList.remove('active');
+                }
+            }
+        });
+    }
 
 }
 
@@ -2790,10 +2237,7 @@ function changeViewMode(mode) {
 
 
 
-// ✅ OLD GROUPING FUNCTIONS (DEPRECATED - now using gantt.groupBy() API)
-// These functions are kept for reference but no longer used
-
-/*
+//new
 var originalTasks = null; // Store original task data
 
 function groupByAssignee() {
@@ -2899,7 +2343,7 @@ function clearGrouping() {
     
     console.log('Grouping cleared');
 }
-*/
+//new
 
 function updateStatistics() {
     var tasks = gantt.getTaskByTime();
@@ -2920,6 +2364,24 @@ function updateStatistics() {
     if (completedElement) completedElement.textContent = completed;
     if (progressElement) progressElement.textContent = inProgress;
 }
-
-// ✅ applyInitialGrouping() removed - now using dropdown-controlled client-side grouping
+// ---------------------------
+// Group-by initialization
+// ---------------------------
+function applyInitialGrouping() {
+    if (typeof gantt === 'undefined' || !gantt.groupBy) return;
+  
+    var container = document.getElementById('dhtmlx-gantt-chart');
+    var mode = (container && container.getAttribute('data-group-by')) || 'none';
+  
+    console.log('[Grouping] Applying initial mode:', mode);
+  
+    if (mode === 'none') {
+      gantt.groupBy(false); // clear grouping
+    } else if (mode === 'assignee' || mode === 'group' || mode === 'sprint') {
+      gantt.groupBy({
+        relation_property: mode,  // task.assignee / task.group / task.sprint
+        default_group_label: '—'
+      });
+    }
+  }
   
