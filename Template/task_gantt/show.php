@@ -121,77 +121,63 @@
         <!-- Task Information Panel -->
         <div class="dhtmlx-gantt-info" style="flex-shrink: 0;">
             <div class="dhtmlx-info-section">
-                <h3><?= t('Project Statistics') ?></h3>
-                <div class="dhtmlx-stats">
-                    <div class="dhtmlx-stat-item">
-                        <span class="dhtmlx-stat-label"><?= t('Total Tasks') ?>:</span>
-                        <span class="dhtmlx-stat-value"><?= count($tasks['data'] ?? $tasks) ?></span>
-                    </div>
-                    <div class="dhtmlx-stat-item">
-                        <span class="dhtmlx-stat-label"><?= t('Completed') ?>:</span>
-                        <span class="dhtmlx-stat-value" id="dhtmlx-completed-count">0</span>
-                    </div>
-                    <div class="dhtmlx-stat-item">
-                        <span class="dhtmlx-stat-label"><?= t('In Progress') ?>:</span>
-                        <span class="dhtmlx-stat-value" id="dhtmlx-progress-count">0</span>
-                    </div>
-                </div>
-            </div>
-
-            <div class="dhtmlx-info-section">
                 <h3><?= t('Legend') ?></h3>
-                <div class="dhtmlx-legend">
-                    <div class="dhtmlx-legend-item">
-                        <span class="dhtmlx-legend-color" style="background: #27ae60;"></span>
-                        <span><?= t('Milestone') ?></span>
-                    </div>
-                    
-                    <?php
-                    // Display Groups with Group_assign color generation
-                    $groups = $groups ?? [];
-                    
-                    // Function to generate colors using EXACT Group_assign algorithm
-                    function getGroupColorInTemplate($groupName) {
-                        // Use EXACT Group_assign CRC32 algorithm
-                        $code = dechex(crc32($groupName));
-                        $code = substr($code, 0, 6);
-                        return '#' . $code;
-                    }
-                    
-                    if (!empty($groups)):
-                    ?>
-                        <strong style="font-size: 11px; color: #666; display: block; margin-top: 10px; margin-bottom: 5px;">
-                            <?= t('User Groups (Fill Colors):') ?>
+                <div class="dhtmlx-legend-two-column">
+                    <!-- Left Column: Task Types -->
+                    <div class="dhtmlx-legend-column">
+                        <strong style="font-size: 11px; color: #666; display: block; margin-bottom: 5px;">
+                            <?= t('Task Types:') ?>
                         </strong>
-                        <?php foreach ($groups as $group): ?>
-                            <?php 
-                            // Use Group_assign's color generation algorithm directly
-                            $groupColor = getGroupColorInTemplate($group['name']);
-                            ?>
+                        <div class="dhtmlx-legend">
                             <div class="dhtmlx-legend-item">
-                                <span class="dhtmlx-legend-color" 
-                                      style="background: <?= $groupColor ?>; border: 2px solid #ddd;">
-                                </span>
-                                <span><?= $this->text->e($group['name']) ?></span>
+                                <span class="dhtmlx-legend-color" style="background: #27ae60;"></span>
+                                <span><?= t('Milestone') ?></span>
                             </div>
-                        <?php endforeach; ?>
-                    <?php else: ?>
-                        <div style="padding: 8px; background: #fff3cd; border-left: 3px solid #ffc107; margin-top: 10px; font-size: 12px;">
-                            ℹ️ <?= t('No user groups defined. Tasks without groups use default colors.') ?>
+                            <div class="dhtmlx-legend-item">
+                                <span class="dhtmlx-legend-color" style="background: #9b59b6;"></span>
+                                <span><?= t('Sprint') ?></span>
+                            </div>
                         </div>
-                    <?php endif; ?>
-                    
-                    <!-- Sprint Colors -->
-                    <strong style="font-size: 11px; color: #666; display: block; margin-top: 10px; margin-bottom: 5px;">
-                        <?= t('Sprints:') ?>
-                    </strong>
-                    <div class="dhtmlx-legend-item">
-                        <span class="dhtmlx-legend-color" style="background: #3498db; border: 2px solid #ddd;"></span>
-                        <span><?= t('Sprint Tasks') ?></span>
                     </div>
-                    <div class="dhtmlx-legend-item">
-                        <span class="dhtmlx-legend-color" style="background: #95a5a6; border: 2px solid #ddd;"></span>
-                        <span><?= t('Regular Tasks') ?></span>
+                    
+                    <!-- Right Column: User Groups -->
+                    <div class="dhtmlx-legend-column">
+                        <?php
+                        // Display Groups with Group_assign color generation
+                        $groups = $groups ?? [];
+                        
+                        // Function to generate colors using EXACT Group_assign algorithm
+                        function getGroupColorInTemplate($groupName) {
+                            // Use EXACT Group_assign CRC32 algorithm
+                            $code = dechex(crc32($groupName));
+                            $code = substr($code, 0, 6);
+                            return '#' . $code;
+                        }
+                        
+                        if (!empty($groups)):
+                        ?>
+                            <strong style="font-size: 11px; color: #666; display: block; margin-bottom: 5px;">
+                                <?= t('User Groups:') ?>
+                            </strong>
+                            <div class="dhtmlx-legend">
+                                <?php foreach ($groups as $group): ?>
+                                    <?php 
+                                    // Use Group_assign's color generation algorithm directly
+                                    $groupColor = getGroupColorInTemplate($group['name']);
+                                    ?>
+                                    <div class="dhtmlx-legend-item">
+                                        <span class="dhtmlx-legend-color" 
+                                              style="background: <?= $groupColor ?>; border: 2px solid #ddd;">
+                                        </span>
+                                        <span><?= $this->text->e($group['name']) ?></span>
+                                    </div>
+                                <?php endforeach; ?>
+                            </div>
+                        <?php else: ?>
+                            <div style="padding: 8px; background: #fff3cd; border-left: 3px solid #ffc107; font-size: 12px;">
+                                ℹ️ <?= t('No user groups defined.') ?>
+                            </div>
+                        <?php endif; ?>
                     </div>
                 </div>
             </div>
@@ -245,6 +231,8 @@
 .dhtmlx-stat-label { font-size: 12px; color: #666; }
 .dhtmlx-stat-value { font-size: 18px; font-weight: bold; color: #333; }
 .dhtmlx-legend { display: flex; flex-direction: column; gap: 5px; }
+.dhtmlx-legend-two-column { display: flex; gap: 30px; }
+.dhtmlx-legend-column { flex: 1; min-width: 0; }
 .dhtmlx-legend-item { display: flex; align-items: center; gap: 8px; }
 .dhtmlx-legend-color { width: 16px; height: 16px; border-radius: 3px; }
 .gantt_task_line.dhtmlx-readonly { opacity: 0.6; }
