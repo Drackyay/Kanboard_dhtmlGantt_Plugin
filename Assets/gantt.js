@@ -22,26 +22,36 @@
             // Override the default serialize method to match Kanboard's expected format
             dp.setTransactionMode("JSON", true);
             
-            // Custom error handling
             dp.attachEvent("onAfterUpdate", function(id, action, tid, response) {
-                if (action === "error") {
-                    console.error("Gantt operation failed:", response);
+                var payload = response;
+            
+                // Try to parse normal XHR wrapped JSON (DHTMLX style)
+                if (response && response.xmlDoc && response.xmlDoc.responseText) {
+                    try { payload = JSON.parse(response.xmlDoc.responseText); } catch (e) {}
+                } else if (response && response.responseText) {
+                    try { payload = JSON.parse(response.responseText); } catch (e) {}
+                }
+            
+                // Backend says "error" → show toast + undo UI change
+                if (action === "error" || (payload && payload.result === "error")) {
                     gantt.message({
                         type: "error",
-                        text: response.message || "Operation failed"
+                        text: payload.message || "Operation failed"
                     });
-                    return false;
+                    return false; // prevents DP from applying invalid change in UI
                 }
-                
-                if (response && response.message) {
+            
+                // Backend returned informational message
+                if (payload && payload.message) {
                     gantt.message({
                         type: "info",
-                        text: response.message
+                        text: payload.message
                     });
                 }
-                
-                return true;
+            
+                return true; // normal success path
             });
+            
             
             return dp;
         }
@@ -227,24 +237,48 @@
             return (ps === 0 && pt === 0) || (ps !== 0 && ps === pt);
         }
 
-        // Intercept link creation before it’s added
+       // --- Combined Validation: Same-level + Circular (single handler) ---
+
+        function isCircularLink(link) {
+            var links = gantt.getLinks();
+            for (var i = 0; i < links.length; i++) {
+                var l = links[i];
+                if (String(l.source) === String(link.target) &&
+                    String(l.target) === String(link.source)) {
+                    return true;
+                }
+            }
+            return false;
+        }
+
         gantt.attachEvent("onBeforeLinkAdd", function(id, link) {
             const s = gantt.getTask(link.source);
             const t = gantt.getTask(link.target);
 
+            // Rule 1 — Same-level
             if (!sameLevelAllowed(s, t)) {
-                // Show a hint (uses DHTMLX's built-in message system)
                 gantt.message({
                     text: "⚠️ Dependency rule violated — links can only connect sibling tasks or top-level tasks.",
                     type: "warning",
                     expire: 4000
                 });
-                return false; // cancel link creation
+                return false;
             }
-            return true; // allow valid link
-        });
-               
 
+            // Rule 2 — Circular dependency
+            if (isCircularLink(link)) {
+                gantt.message({
+                    text: "⚠️ Circular dependency detected",
+                    type: "error",
+                    expire: 4000
+                });
+                return false;
+            }
+
+            return true; // OK → allow backend call
+        });
+
+            
         console.log("Kanboard DHtmlX Gantt extensions loaded successfully");
     }
 
