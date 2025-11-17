@@ -134,6 +134,10 @@ class TaskGanttController extends BaseController
         $task_id = (int) $changes['id'];
         $values['id'] = $task_id;
 
+        // Load current metadata to determine stored task type, etc.
+        $metadata = $this->taskMetadataModel->getAll($task_id);
+        $currentTaskType = isset($metadata['task_type']) && $metadata['task_type'] !== '' ? $metadata['task_type'] : 'task';
+
         // Update title/description
         if (! empty($changes['text'])) {
             $values['title'] = $changes['text'];
@@ -179,6 +183,56 @@ class TaskGanttController extends BaseController
             $isMilestone = $changes['is_milestone'] ? '1' : '0';
             error_log('DHtmlX Gantt Save - Setting milestone status to: ' . $isMilestone);
             $this->taskMetadataModel->save($task_id, array('is_milestone' => $isMilestone));
+        }
+        
+        // ✅ Handle task_type (task, milestone, sprint)
+        if (isset($changes['task_type']) && $changes['task_type'] !== '') {
+            $currentTaskType = $changes['task_type'];
+            error_log('DHtmlX Gantt Save - Setting task_type to: ' . $currentTaskType);
+            $this->taskMetadataModel->save($task_id, array('task_type' => $currentTaskType));
+        }
+        
+        // ✅ Handle sprint child_tasks updates
+        $hasChildTasksPayload = isset($changes['child_tasks']);
+        if ($hasChildTasksPayload && $currentTaskType !== 'sprint') {
+            $currentTaskType = 'sprint';
+            error_log('DHtmlX Gantt Save - Inferring sprint type from child_tasks payload for task ' . $task_id);
+            $this->taskMetadataModel->save($task_id, array('task_type' => 'sprint'));
+        }
+
+        if ($hasChildTasksPayload && $currentTaskType === 'sprint') {
+            $newChildIds = is_array($changes['child_tasks']) ? $changes['child_tasks'] : array();
+            $newChildIds = array_values(array_unique(array_map('intval', $newChildIds)));
+            error_log('DHtmlX Gantt Save - Updating sprint child tasks for task ' . $task_id . ': ' . json_encode($newChildIds));
+            
+            // Get existing child task IDs
+            $existingChildIds = $this->getExistingChildIds($task_id);
+            error_log('DHtmlX Gantt Save - Existing child tasks: ' . json_encode($existingChildIds));
+            
+            // Determine which links to add and remove
+            $toAdd = array_diff($newChildIds, $existingChildIds);
+            $toRemove = array_diff($existingChildIds, $newChildIds);
+            
+            error_log('DHtmlX Gantt Save - Links to add: ' . json_encode($toAdd));
+            error_log('DHtmlX Gantt Save - Links to remove: ' . json_encode($toRemove));
+            
+            // Get the link ID for "is a parent of"
+            $linkId = $this->getLinkIdByLabel('is a parent of');
+            
+            if (!$linkId) {
+                error_log('DHtmlX Gantt Save - Error: "is a parent of" link type not found');
+            } else {
+                // Remove old links
+                foreach ($toRemove as $childId) {
+                    $this->removeParentChildLink($task_id, (int)$childId);
+                }
+                
+                // Add new links
+                foreach ($toAdd as $childId) {
+                    $this->taskLinkModel->create($task_id, (int)$childId, $linkId);
+                    error_log('DHtmlX Gantt Save - Created link: task ' . $task_id . ' is parent of task ' . $childId);
+                }
+            }
         }
         
         // ✅ Handle progress updates (store in metadata)
@@ -263,6 +317,26 @@ class TaskGanttController extends BaseController
                 $isMilestone = $data['is_milestone'] ? '1' : '0';
                 error_log('DHtmlX Gantt Create - Setting milestone status to: ' . $isMilestone . ' for task: ' . $task_id);
                 $this->taskMetadataModel->save($task_id, array('is_milestone' => $isMilestone));
+            }
+
+            // Handle task_type metadata (task, milestone, sprint)
+            $createdTaskType = isset($data['task_type']) && $data['task_type'] !== '' ? $data['task_type'] : 'task';
+            $this->taskMetadataModel->save($task_id, array('task_type' => $createdTaskType));
+
+            // If sprint, create parent-child links immediately
+            if ($createdTaskType === 'sprint' && !empty($data['child_tasks']) && is_array($data['child_tasks'])) {
+                $linkId = $this->getLinkIdByLabel('is a parent of');
+                if ($linkId) {
+                    $childIds = array_values(array_unique(array_map('intval', $data['child_tasks'])));
+                    foreach ($childIds as $childId) {
+                        if ($childId > 0) {
+                            $this->taskLinkModel->create($task_id, $childId, $linkId);
+                            error_log('DHtmlX Gantt Create - Linked sprint ' . $task_id . ' as parent of task ' . $childId);
+                        }
+                    }
+                } else {
+                    error_log('DHtmlX Gantt Create - Warning: "is a parent of" link type not found when creating sprint.');
+                }
             }
             
             error_log('DHtmlX Gantt Create - Task created successfully with ID: ' . $task_id);
@@ -575,6 +649,80 @@ class TaskGanttController extends BaseController
     {
         $link = $this->db->table('links')->eq('label', $label)->findOne();
         return $link ? $link['id'] : null;
+    }
+    
+    /**
+     * Get existing child task IDs for a parent task (sprint)
+     * Reads from task_has_links table using "is a parent of" / "is a child of" labels
+     */
+    private function getExistingChildIds($parentId)
+    {
+        $childIds = array();
+        
+        // Case 1: Links where parent is task_id with label "is a parent of"
+        $rows = $this->db->table('task_has_links')
+            ->join('links', 'id', 'link_id')
+            ->columns('links.label', 'task_has_links.opposite_task_id')
+            ->eq('task_has_links.task_id', $parentId)
+            ->findAll();
+        
+        foreach ($rows as $row) {
+            $label = $row['label'] ?? ($row['links.label'] ?? '');
+            if ($label === 'is a parent of') {
+                $childId = (int) ($row['opposite_task_id'] ?? ($row['task_has_links.opposite_task_id'] ?? 0));
+                if ($childId > 0) {
+                    $childIds[] = $childId;
+                }
+            }
+        }
+        
+        // Case 2: Links where parent is opposite_task_id with label "is a child of"
+        $rows = $this->db->table('task_has_links')
+            ->join('links', 'id', 'link_id')
+            ->columns('links.label', 'task_has_links.task_id')
+            ->eq('task_has_links.opposite_task_id', $parentId)
+            ->findAll();
+        
+        foreach ($rows as $row) {
+            $label = $row['label'] ?? ($row['links.label'] ?? '');
+            if ($label === 'is a child of') {
+                $childId = (int) ($row['task_id'] ?? ($row['task_has_links.task_id'] ?? 0));
+                if ($childId > 0) {
+                    $childIds[] = $childId;
+                }
+            }
+        }
+        
+        return array_unique($childIds);
+    }
+    
+    /**
+     * Remove parent-child link between parent and child task
+     */
+    private function removeParentChildLink($parentId, $childId)
+    {
+        // Find and remove the link in task_has_links table
+        // Could be stored as (parent, child, "is a parent of") OR (child, parent, "is a child of")
+        
+        $linkId = $this->getLinkIdByLabel('is a parent of');
+        if ($linkId) {
+            $this->db->table('task_has_links')
+                ->eq('task_id', $parentId)
+                ->eq('opposite_task_id', $childId)
+                ->eq('link_id', $linkId)
+                ->remove();
+        }
+        
+        $linkId = $this->getLinkIdByLabel('is a child of');
+        if ($linkId) {
+            $this->db->table('task_has_links')
+                ->eq('task_id', $childId)
+                ->eq('opposite_task_id', $parentId)
+                ->eq('link_id', $linkId)
+                ->remove();
+        }
+        
+        error_log('DHtmlX Gantt Save - Removed parent-child link between ' . $parentId . ' and ' . $childId);
     }
     
     // POST /dhtmlxgantt/:project_id/dependency

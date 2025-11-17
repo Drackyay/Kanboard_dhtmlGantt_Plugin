@@ -193,11 +193,23 @@ class TaskGanttFormatter extends BaseFormatter implements FormatterInterface
         $metadata = $this->taskMetadataModel->getAll($task['id']);
         $isMilestone = !empty($metadata['is_milestone']) && $metadata['is_milestone'] === '1';
         
+        // Resolve existing child task links once
+        $resolvedChildIds = $this->getChildrenIds((int) $task['id']);
+
         // ✅ Get task type from metadata (default to 'task')
-        $taskType = isset($metadata['task_type']) && $metadata['task_type'] !== '' ? $metadata['task_type'] : 'task';
+        $taskType = isset($metadata['task_type']) && $metadata['task_type'] !== '' ? $metadata['task_type'] : '';
+        if ($taskType === '') {
+            $taskType = !empty($resolvedChildIds) ? 'sprint' : 'task';
+        }
         
-        // Override color for milestones to green, otherwise use group-based color
-        $color = $isMilestone ? '#27ae60' : $this->getGroupFillColor($task);
+        // Override color for milestones (green) and sprints (purple), otherwise use group-based color
+        if ($isMilestone) {
+            $color = '#27ae60'; // green for milestones
+        } elseif ($taskType === 'sprint') {
+            $color = '#9b59b6'; // purple for sprints
+        } else {
+            $color = $this->getGroupFillColor($task);
+        }
         
         // Get group information for tooltip display
         $groupInfo = $this->getGroupInfo($task);
@@ -223,10 +235,7 @@ class TaskGanttFormatter extends BaseFormatter implements FormatterInterface
         }
         
         // For sprints, pre-compute child task IDs from internal links so the lightbox can preselect them
-        $childTaskIds = array();
-        if ($taskType === 'sprint') {
-            $childTaskIds = $this->getChildrenIds((int)$task['id']);
-        }
+        $childTaskIds = $taskType === 'sprint' ? $resolvedChildIds : array();
 
         // ✅ Check for stored progress in metadata first, then fall back to calculated
         $progress = $this->getStoredProgress($task);
@@ -260,7 +269,7 @@ class TaskGanttFormatter extends BaseFormatter implements FormatterInterface
                 'task_id' => $task['id']
             )),
             'readonly' => $this->isReadonly($task),
-            'type' => 'task',
+            'type' => $taskType === 'sprint' ? 'project' : 'task',
             'is_milestone' => $isMilestone,
             'open' => true,
         
@@ -617,6 +626,54 @@ class TaskGanttFormatter extends BaseFormatter implements FormatterInterface
         }
 
         return null; // top-level if we didn't find a parent link
+    }
+
+    /**
+     * Get IDs of tasks linked as children to the given parent task.
+     * Uses Kanboard internal links with labels "is a parent of" / "is a child of".
+     *
+     * @param int $parentId
+     * @return int[]
+     */
+    private function getChildrenIds(int $parentId): array
+    {
+        $childIds = [];
+
+        // Direct links where this task is recorded as the parent (task_id)
+        $rows = $this->db->table('task_has_links')
+            ->join('links', 'id', 'link_id')
+            ->columns('links.label', 'task_has_links.task_id', 'task_has_links.opposite_task_id')
+            ->eq('task_has_links.task_id', $parentId)
+            ->findAll();
+
+        foreach ($rows as $row) {
+            $label = $row['label'] ?? ($row['links.label'] ?? '');
+            if ($label === 'is a parent of') {
+                $childId = (int) ($row['opposite_task_id'] ?? ($row['task_has_links.opposite_task_id'] ?? 0));
+                if ($childId > 0) {
+                    $childIds[$childId] = $childId;
+                }
+            }
+        }
+
+        // Inverse links where this task is recorded as the parent (opposite_task_id)
+        $rows = $this->db->table('task_has_links')
+            ->join('links', 'id', 'link_id')
+            ->columns('links.label', 'task_has_links.task_id', 'task_has_links.opposite_task_id')
+            ->eq('task_has_links.opposite_task_id', $parentId)
+            ->findAll();
+
+        foreach ($rows as $row) {
+            $label = $row['label'] ?? ($row['links.label'] ?? '');
+            if ($label === 'is a child of') {
+                $childId = (int) ($row['task_id'] ?? ($row['task_has_links.task_id'] ?? 0));
+                if ($childId > 0) {
+                    $childIds[$childId] = $childId;
+                }
+            }
+        }
+
+        return array_values($childIds);
     }
 
     /**

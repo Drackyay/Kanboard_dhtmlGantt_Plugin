@@ -196,6 +196,24 @@
     display: none !important;
 }
 
+/* Sprint Styles - Purple */
+.gantt_task_line.sprint-block {
+    background-color: #9b59b6 !important;
+    border-color: #8e44ad !important;
+    color: #fff !important;
+}
+
+.gantt_task_line.sprint-block .gantt_task_content,
+.gantt_task_line.sprint-block .gantt_task_rightside_text,
+.gantt_task_line.sprint-block .gantt_task_progress_text {
+    color: #ffffff !important;
+    text-shadow: none !important;
+}
+
+.gantt_task_line.sprint-block .gantt_task_progress {
+    background: rgba(255, 255, 255, 0.35) !important;
+}
+
 /* Button Styles */
 
 .btn-dhtmlx-view.active {
