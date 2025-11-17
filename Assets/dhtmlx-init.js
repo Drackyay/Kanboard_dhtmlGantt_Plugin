@@ -404,7 +404,8 @@ document.addEventListener('DOMContentLoaded', function() {
         create: container.getAttribute('data-create-url'),
         remove: container.getAttribute('data-remove-url'),
         createLink: container.getAttribute('data-create-link-url'),
-        removeLink: container.getAttribute('data-remove-link-url')
+        removeLink: container.getAttribute('data-remove-link-url'),
+        getData: container.getAttribute('data-get-data-url')  // ✅ NEW: Fast JSON refresh endpoint
     };
     
     // Fetch project members (users and groups) for assignment dropdowns
@@ -438,11 +439,19 @@ function initDhtmlxGantt() {
     gantt.config.date_format = "%Y-%m-%d %H:%i";
     gantt.config.xml_date = "%Y-%m-%d %H:%i";
     
-    // NEW scale configuration format (fixes deprecation warnings) - Default to Week view
-    gantt.config.scales = [
-        {unit: "week", step: 1, format: "Week #%W"},
-        {unit: "day", step: 1, format: "%d %M"}
-    ];
+    // NEW scale configuration format (fixes deprecation warnings)
+    // ✅ Apply saved zoom level from localStorage (if available)
+    if (currentZoomLevel >= 0 && zoomLevels[currentZoomLevel]) {
+        gantt.config.scales = zoomLevels[currentZoomLevel].scales;
+        console.log('📌 Applied saved zoom level on init:', zoomLevels[currentZoomLevel].name);
+    } else {
+        // Default to day view (level 1)
+        gantt.config.scales = [
+            {unit: "week", step: 1, format: "Week #%W"},
+            {unit: "day", step: 1, format: "%d %M"}
+        ];
+        console.log('Using default zoom level: day view');
+    }
     
     // Ensure grid is visible
     gantt.config.grid_width = 400;
@@ -1581,8 +1590,12 @@ function updateWorkloadPanel(tasks, resources) {
 }
 
 //new
-// Simple zoom configuration
-var currentZoomLevel = 1; // Start at day view
+// Simple zoom configuration - ORIGINAL
+// ✅ Restore saved zoom level from localStorage (survives page reloads)
+var savedZoomLevel = localStorage.getItem('ganttZoomLevel');
+var currentZoomLevel = savedZoomLevel !== null ? parseInt(savedZoomLevel, 10) : 1; // Default to day view (level 1)
+console.log('📌 Initializing with zoom level:', currentZoomLevel, '(from localStorage:', savedZoomLevel, ')');
+
 var zoomLevels = [
     { name: "hour", scales: [{unit: "day", format: "%d %M"}, {unit: "hour", format: "%H"}] },
     { name: "day", scales: [{unit: "week", format: "Week #%W"}, {unit: "day", format: "%d %M"}] },
@@ -1597,6 +1610,8 @@ function smartZoom(direction) {
     
     if (newLevel === currentZoomLevel) return;
     
+    console.log('🔎 Zooming', direction, '- Level:', currentZoomLevel, '→', newLevel);
+    
     // Save center date to maintain position
     var scrollState = gantt.getScrollState();
     var centerDate = gantt.dateFromPos(scrollState.x + scrollState.width / 2);
@@ -1605,6 +1620,14 @@ function smartZoom(direction) {
     gantt.config.scales = zoomLevels[newLevel].scales;
     gantt.render();
     currentZoomLevel = newLevel;
+    
+    // ✅ Save zoom level to localStorage so it survives page reloads
+    localStorage.setItem('ganttZoomLevel', currentZoomLevel);
+    
+    // ✅ Clear view mode from localStorage (zoom buttons override view mode buttons)
+    localStorage.removeItem('ganttViewMode');
+    
+    console.log('✅ Zoom applied:', zoomLevels[newLevel].name, '- currentZoomLevel:', currentZoomLevel, '(saved to localStorage)');
     
     // Restore center position
     if (centerDate) {
@@ -2203,54 +2226,83 @@ function setupGanttEventHandlers() {
     // Note: recalcParentDuration and recalcAllParentDurations moved to global scope
 
 /**
- * ✅ DYNAMIC DATA RELOAD FUNCTION
- * Reloads fresh data from server to ensure chart is always in sync
+ * ✅ DYNAMIC DATA RELOAD FUNCTION - FAST JSON ENDPOINT
+ * Reloads fresh data from server to ensure chart is always in sync (NO PAGE RELOAD!)
  */
 function reloadGanttDataFromServer() {
-    console.log('Reloading Gantt data from server...');
+    console.log('🔄 Reloading Gantt data from server (FAST - no page reload)...');
     
-    // Get current page URL to reload data from same source
-    var currentUrl = window.location.href;
+    // ✅ Save current zoom level, column width, and scroll position before reload
+    var savedZoomLevel = currentZoomLevel;
+    var savedMinColumnWidth = gantt.config.min_column_width;
+    var savedScrollState = gantt.getScrollState();
     
-    // Make request to current page to get fresh data
-    fetch(currentUrl, {
+    console.log('💾 Saved state - zoom:', savedZoomLevel, 'min_column_width:', savedMinColumnWidth);
+    
+    // ✅ Use dedicated JSON endpoint URL from data attribute
+    var dataUrl = window.ganttUrls && window.ganttUrls.getData;
+    
+    if (!dataUrl) {
+        console.error('❌ No getData URL configured!');
+        fallbackRefresh();
+        return;
+    }
+    
+    console.log('📡 Fetching from:', dataUrl);
+    
+    // Make FAST JSON request (no HTML parsing needed!)
+    fetch(dataUrl, {
         method: 'GET',
         headers: {
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+            'Accept': 'application/json',
             'Cache-Control': 'no-cache'
         }
     })
-    .then(response => response.text())
-    .then(html => {
-        console.log('Received fresh HTML, extracting task data...');
-        
-        // Extract the fresh taskData from the HTML response
-        var taskDataMatch = html.match(/window\.taskData\s*=\s*({[^;]+});/);
-        if (taskDataMatch) {
-            try {
-                var freshTaskData = JSON.parse(taskDataMatch[1]);
-                console.log('Extracted fresh task data:', freshTaskData);
-                
-                // Update cached data
-                window.taskData = freshTaskData;
-                
-                // Clear and reload chart with fresh data
-                gantt.clearAll();
-                gantt.parse(freshTaskData);
-                
-                console.log('✅ Chart reloaded with fresh server data!');
-                
-            } catch (parseError) {
-                console.error('Failed to parse fresh task data:', parseError);
-                fallbackRefresh();
-            }
-        } else {
-            console.warn('Could not extract task data from server response');
-            fallbackRefresh();
+    .then(response => {
+        console.log('✅ Response received, status:', response.status);
+        if (!response.ok) {
+            throw new Error('HTTP ' + response.status + ': ' + response.statusText);
         }
+        return response.json();
+    })
+    .then(freshTaskData => {
+        console.log('✅ Got fresh task data from JSON endpoint:', freshTaskData);
+        
+        // Update cached data
+        window.taskData = freshTaskData;
+        
+        // Clear and reload chart with fresh data
+        gantt.clearAll();
+        gantt.parse(freshTaskData);
+        
+        // ✅ Restore zoom level and column width after reload
+        if (typeof savedZoomLevel === 'number' && savedZoomLevel >= 0 && zoomLevels[savedZoomLevel]) {
+            gantt.config.scales = zoomLevels[savedZoomLevel].scales;
+            currentZoomLevel = savedZoomLevel;
+            console.log('✅ Restored zoom:', zoomLevels[savedZoomLevel].name);
+        }
+        
+        // ✅ Restore min_column_width (critical for Month view)
+        if (savedMinColumnWidth) {
+            gantt.config.min_column_width = savedMinColumnWidth;
+            console.log('✅ Restored min_column_width:', savedMinColumnWidth);
+        }
+        
+        gantt.render(); // Re-render with all saved settings
+        
+        // ✅ Restore scroll position after a short delay
+        setTimeout(function() {
+            if (savedScrollState) {
+                gantt.scrollTo(savedScrollState.x, savedScrollState.y);
+                console.log('✅ Restored scroll position');
+            }
+        }, 100);
+        
+        console.log('✅✅✅ FAST RELOAD COMPLETE - No page refresh! ✅✅✅');
     })
     .catch(error => {
-        console.error('Failed to reload data from server:', error);
+        console.error('❌ Fast JSON reload failed:', error);
+        console.warn('⚠️ Falling back to slow full page reload...');
         fallbackRefresh();
     });
 }
@@ -2259,8 +2311,10 @@ function reloadGanttDataFromServer() {
  * Fallback refresh method when server reload fails
  */
 function fallbackRefresh() {
-    console.log('Using fallback refresh - reloading page...');
+    console.warn('⚠️ reloadGanttDataFromServer() FAILED - Using fallback: full page reload');
+    console.warn('📌 View mode will be restored from localStorage after reload');
     // As last resort, reload the entire page to get fresh data
+    // (View mode is saved in localStorage so it will be restored)
     window.location.reload();
 }
     
@@ -2402,6 +2456,26 @@ function fallbackRefresh() {
                 changeViewMode(view);
             });
         });
+        
+        // ✅ Restore saved view mode from localStorage (survives page reloads)
+        // But only if zoom level is NOT saved (zoom buttons take precedence)
+        var savedZoomFromStorage = localStorage.getItem('ganttZoomLevel');
+        var savedViewMode = localStorage.getItem('ganttViewMode');
+        
+        if (!savedZoomFromStorage && savedViewMode) {
+            console.log('📌 Restoring saved view mode from localStorage:', savedViewMode);
+            changeViewMode(savedViewMode);
+            // Mark the correct button as active
+            viewButtons.forEach(function(btn) {
+                if (btn.getAttribute('data-view') === savedViewMode) {
+                    btn.classList.add('active');
+                } else {
+                    btn.classList.remove('active');
+                }
+            });
+        } else if (savedZoomFromStorage) {
+            console.log('📌 Zoom level found in localStorage, skipping view mode restoration');
+        }
     }, 100);
     
     // Statistics removed - no longer displayed
@@ -2434,6 +2508,15 @@ function fallbackRefresh() {
 
 function changeViewMode(mode) {
     console.log('Changing view mode to:', mode);
+    
+    // ✅ Save view mode to localStorage so it survives page reloads
+    localStorage.setItem('ganttViewMode', mode);
+    
+    // ✅ Clear zoom level from localStorage (view mode buttons override zoom buttons)
+    localStorage.removeItem('ganttZoomLevel');
+    currentZoomLevel = 1; // Reset to default
+    console.log('🔄 Cleared zoom level (view mode buttons override zoom)');
+    
     // Use NEW scale configuration format
     switch(mode) {
         case 'Quarter Day':
@@ -2441,34 +2524,39 @@ function changeViewMode(mode) {
                 {unit: "hour", step: 1, format: "%H"},
                 {unit: "minute", step: 15, format: "%i"}
             ];
+            gantt.config.min_column_width = 70;
             break;
         case 'Half Day':
             gantt.config.scales = [
                 {unit: "hour", step: 1, format: "%H"},
                 {unit: "minute", step: 30, format: "%i"}
             ];
+            gantt.config.min_column_width = 70;
             break;
         case 'Day':
             gantt.config.scales = [
                 {unit: "day", step: 1, format: "%d %M"},
                 {unit: "hour", step: 1, format: "%H"}
             ];
+            gantt.config.min_column_width = 70;
             break;
         case 'Week':
             gantt.config.scales = [
                 {unit: "week", step: 1, format: "Week #%W"},
                 {unit: "day", step: 1, format: "%d %M"}
             ];
+            gantt.config.min_column_width = 50; // Shows ~3 weeks
             break;
         case 'Month':
             gantt.config.scales = [
                 {unit: "month", step: 1, format: "%F %Y"},
                 {unit: "day", step: 1, format: "%d"}
             ];
+            gantt.config.min_column_width = 15; // ✅ Much narrower = shows ~3-4 months
             break;
     }
     gantt.render();
-    console.log('View mode changed to:', mode, 'Gantt re-rendered');
+    console.log('View mode changed to:', mode, '(saved to localStorage) - Gantt re-rendered');
 }
 
 

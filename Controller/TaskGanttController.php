@@ -77,6 +77,47 @@ class TaskGanttController extends BaseController
         ));
     }
 
+    /**
+     * ✅ NEW: Get task data as JSON (for fast AJAX refresh without page reload)
+     */
+    public function getData()
+    {
+        $project = $this->getProject();
+
+        if (isset($_GET['search'])) {
+            $search = $this->helper->projectHeader->getSearchQuery($project);
+            $search = $this->enhanceSearchQuery($search);
+        } else {
+            $search = 'status:open status:closed';
+        }
+
+        $sorting = $this->request->getStringParam('sorting', '');
+        $groupBy = $this->request->getStringParam('group_by', 'none');
+
+        if (method_exists($this->taskGanttFormatter, 'setGroupBy')) {
+            $this->taskGanttFormatter->setGroupBy($groupBy);
+        }
+
+        $filter = $this->taskLexer->build($search)->withFilter(new TaskProjectFilter($project['id']));
+
+        if ($sorting === '') {
+            $sorting = $this->configModel->get('dhtmlgantt_task_sort', 'board');
+        }
+
+        if ($sorting === 'date') {
+            $filter->getQuery()->asc(TaskModel::TABLE.'.date_started')->asc(TaskModel::TABLE.'.date_due');
+        } else {
+            $filter->getQuery()->asc('column_position')->asc(TaskModel::TABLE.'.position');
+        }
+
+        if (method_exists($this->taskGanttFormatter, 'setProject')) {
+            $this->taskGanttFormatter->setProject($project);
+        }
+
+        // Return JSON data directly
+        $this->response->json($filter->format($this->taskGanttFormatter));
+    }
+
 
     /**
      * Save task updates (title, dates, priority, etc.)
