@@ -59,8 +59,8 @@ class TaskGanttController extends BaseController
             $this->taskGanttFormatter->setProject($project);
         }
 
-        // Get all groups in the system (for legend display)
-        $groups = $this->db->table('groups')->findAll();
+        // ✅ Get only groups used in this project (not all groups in the system)
+        $groups = $this->getProjectGroups($project['id']);
 
         $this->response->html($this->helper->layout->app(
             'DhtmlGantt:task_gantt/show',
@@ -793,6 +793,47 @@ class TaskGanttController extends BaseController
                 'message' => $e->getMessage()
             ), 500);
         }
+    }
+
+    /**
+     * Get only the CATEGORIES that are actually used by tasks in this project
+     * 
+     * @access private
+     * @param  int $project_id
+     * @return array Array of unique categories used in the project with their colors
+     */
+    private function getProjectGroups($project_id)
+    {
+        // Get all tasks in this project
+        $tasks = $this->taskFinderModel->getAll($project_id);
+        
+        if (empty($tasks)) {
+            return array();
+        }
+        
+        $categoryIds = array();
+        
+        // ✅ Collect unique CATEGORIES from tasks (not user groups)
+        foreach ($tasks as $task) {
+            if (!empty($task['category_id'])) {
+                $category = $this->categoryModel->getById($task['category_id']);
+                if ($category) {
+                    // Get the actual Kanboard color for this category
+                    if (!empty($category['color_id'])) {
+                        $colorProps = $this->colorModel->getColorProperties($category['color_id']);
+                        $category['color'] = $colorProps['background'];
+                    } else {
+                        $category['color'] = '#bdc3c7'; // Default gray
+                    }
+                    
+                    // Use category ID as key to avoid duplicates
+                    $categoryIds[$category['id']] = $category;
+                }
+            }
+        }
+        
+        // Return unique categories
+        return array_values($categoryIds);
     }
 
 }

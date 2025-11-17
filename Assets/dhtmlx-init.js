@@ -991,6 +991,7 @@ gantt.form_blocks["template"] = {
                     option.dataset.taskId = t.id;
                     option.dataset.taskText = t.text.toLowerCase();
                     option.dataset.taskAssignee = (t.assignee || 'unassigned').toLowerCase();
+                    option.dataset.taskGroup = (t.group || 'uncategorized').toLowerCase(); // ✅ Add category for search
                     
                     if (selectedTasks.indexOf(t.id) !== -1) {
                         option.style.backgroundColor = '#e3f2fd';
@@ -1052,7 +1053,10 @@ gantt.form_blocks["template"] = {
                 taskItems.forEach(function(item) {
                     var taskText = item.dataset.taskText || '';
                     var taskAssignee = item.dataset.taskAssignee || '';
-                    var matches = taskText.indexOf(searchTerm) !== -1 || taskAssignee.indexOf(searchTerm) !== -1;
+                    var taskGroup = item.dataset.taskGroup || ''; // ✅ Add category search
+                    var matches = taskText.indexOf(searchTerm) !== -1 || 
+                                  taskAssignee.indexOf(searchTerm) !== -1 || 
+                                  taskGroup.indexOf(searchTerm) !== -1; // ✅ Search by category
                     item.style.display = matches ? '' : 'none';
                 });
             });

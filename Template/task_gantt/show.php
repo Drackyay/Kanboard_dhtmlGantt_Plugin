@@ -68,7 +68,7 @@
                 <select id="dhtmlx-group-by" class="btn" style="height: 32px; padding: 5px 10px; font-size: 13px; min-width: 120px; max-width: 150px;">
                     <option value="none"><?= t('None') ?></option>
                     <option value="assignee"><?= t('Assignee') ?></option>
-                    <option value="group"><?= t('User Group') ?></option>
+                    <option value="group"><?= t('Category') ?></option>
                     <option value="sprint"><?= t('Sprint') ?></option>
                 </select>
             </div>
@@ -140,45 +140,52 @@
                         </div>
                     </div>
                     
-                    <!-- Right Column: User Groups -->
-                    <div class="dhtmlx-legend-column">
-                        <?php
-                        // Display Groups with Group_assign color generation
-                        $groups = $groups ?? [];
+                    <!-- Right Column: Task Categories (with auto-columns if > 5 categories) -->
+                    <?php
+                    // Display categories with their actual Kanboard colors
+                    $groups = $groups ?? [];  // Note: $groups var contains categories now
+                    
+                    if (!empty($groups)):
+                        // ✅ Split categories into chunks of 5 for multiple columns
+                        $groupChunks = array_chunk($groups, 5);
                         
-                        // Function to generate colors using EXACT Group_assign algorithm
-                        function getGroupColorInTemplate($groupName) {
-                            // Use EXACT Group_assign CRC32 algorithm
-                            $code = dechex(crc32($groupName));
-                            $code = substr($code, 0, 6);
-                            return '#' . $code;
-                        }
-                        
-                        if (!empty($groups)):
-                        ?>
-                            <strong style="font-size: 11px; color: #666; display: block; margin-bottom: 5px;">
-                                <?= t('User Groups:') ?>
-                            </strong>
+                        foreach ($groupChunks as $chunkIndex => $chunk):
+                    ?>
+                        <div class="dhtmlx-legend-column">
+                            <?php if ($chunkIndex === 0): ?>
+                                <strong style="font-size: 11px; color: #666; display: block; margin-bottom: 5px;">
+                                    <?= t('Task Categories:') ?>
+                                </strong>
+                            <?php else: ?>
+                                <strong style="font-size: 11px; color: transparent; display: block; margin-bottom: 5px;">
+                                    &nbsp;
+                                </strong>
+                            <?php endif; ?>
                             <div class="dhtmlx-legend">
-                                <?php foreach ($groups as $group): ?>
+                                <?php foreach ($chunk as $category): ?>
                                     <?php 
-                                    // Use Group_assign's color generation algorithm directly
-                                    $groupColor = getGroupColorInTemplate($group['name']);
+                                    // ✅ Use actual Kanboard category color (passed from controller)
+                                    $categoryColor = isset($category['color']) ? $category['color'] : '#bdc3c7';
                                     ?>
                                     <div class="dhtmlx-legend-item">
                                         <span class="dhtmlx-legend-color" 
-                                              style="background: <?= $groupColor ?>; border: 2px solid #ddd;">
+                                              style="background: <?= $categoryColor ?>; border: 2px solid #ddd;">
                                         </span>
-                                        <span><?= $this->text->e($group['name']) ?></span>
+                                        <span><?= $this->text->e($category['name']) ?></span>
                                     </div>
                                 <?php endforeach; ?>
                             </div>
-                        <?php else: ?>
+                        </div>
+                    <?php 
+                        endforeach;
+                    else: 
+                    ?>
+                        <div class="dhtmlx-legend-column">
                             <div style="padding: 8px; background: #fff3cd; border-left: 3px solid #ffc107; font-size: 12px;">
-                                ℹ️ <?= t('No user groups defined.') ?>
+                                ℹ️ <?= t('No categories used in this project.') ?>
                             </div>
-                        <?php endif; ?>
-                    </div>
+                        </div>
+                    <?php endif; ?>
                 </div>
             </div>
         </div>

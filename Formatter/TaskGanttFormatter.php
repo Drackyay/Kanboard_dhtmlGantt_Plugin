@@ -59,6 +59,11 @@ class TaskGanttFormatter extends BaseFormatter implements FormatterInterface
 
         foreach ($this->query->findAll() as $task) {
 
+            // ✅ Skip closed tasks (is_active == 0 means task is closed)
+            if (isset($task['is_active']) && $task['is_active'] == 0) {
+                continue;
+            }
+
             // Skip tasks in Done column (filter by column name, not task status)
             if (isset($task['column_name']) && strcasecmp($task['column_name'], 'Done') === 0) {
                 continue;
@@ -180,7 +185,8 @@ class TaskGanttFormatter extends BaseFormatter implements FormatterInterface
             $this->columns[$task['project_id']] = $this->columnModel->getList($task['project_id']);
         }
 
-        $start = $task['date_started'] ?: time();
+        // ✅ Use date_started if available, otherwise fall back to date_creation
+        $start = $task['date_started'] ?: ($task['date_creation'] ?: time());
         $end = $task['date_due'] ?: ($start + 24 * 60 * 60); // Default to 1 day duration
 
         // Check if task is a milestone
@@ -198,21 +204,21 @@ class TaskGanttFormatter extends BaseFormatter implements FormatterInterface
         
         // ✅ Get owner/assignee name
         $assignee = t('Unassigned');
-        $userGroupName = t('Ungrouped');
         
         if (!empty($task['owner_id'])) {
             $owner = $this->userModel->getById($task['owner_id']);
             if ($owner) {
                 // Use username or name, prefer username as it's more commonly displayed
                 $assignee = !empty($owner['username']) ? $owner['username'] : $owner['name'];
-                
-                // ✅ Get user's groups (for "Group by Group")
-                $userGroups = $this->groupMemberModel->getGroups($task['owner_id']);
-                if (!empty($userGroups)) {
-                    // Use first group if user belongs to multiple
-                    $groupNames = array_column($userGroups, 'name');
-                    $userGroupName = implode(', ', $groupNames);
-                }
+            }
+        }
+        
+        // ✅ Get category name (used for grouping)
+        $categoryName = t('Uncategorized');
+        if (!empty($task['category_id'])) {
+            $category = $this->categoryModel->getById($task['category_id']);
+            if ($category && !empty($category['name'])) {
+                $categoryName = $category['name'];
             }
         }
         
@@ -239,10 +245,10 @@ class TaskGanttFormatter extends BaseFormatter implements FormatterInterface
             'color' => $color,
             'owner_id' => $task['owner_id'],
         
-            // ✅ Use computed assignee and group values
+            // ✅ Use computed assignee and category-based group
             'assignee' => $assignee,
-            'group' => $userGroupName,
-            'group_name' => $groupInfo ? $groupInfo['name'] : null,
+            'group' => $categoryName,  // Using task category for grouping
+            'group_name' => $categoryName,  // Also store in group_name for consistency
         
             // Sprint commonly comes from metadata:
             'sprint' => isset($metadata['sprint']) && $metadata['sprint'] !== '' ? $metadata['sprint'] : t('No Sprint'),
@@ -280,10 +286,16 @@ class TaskGanttFormatter extends BaseFormatter implements FormatterInterface
         $formattedSubTasks = array();
 
         foreach ($subTasks as $subTask) {
-            // Kanboard subtasks don't have due_date, use current time as fallback
+            // ✅ Skip completed subtasks (status == 2 means Done)
+            if (isset($subTask['status']) && $subTask['status'] == 2) {
+                continue;
+            }
+
+            // ✅ Use parent task's date_started or date_creation as fallback for subtasks
+            $parentStart = $parentTask['date_started'] ?: ($parentTask['date_creation'] ?: time());
             $due_date = isset($subTask['due_date']) ? $subTask['due_date'] : null;
-            $start = $due_date ? $due_date - (3 * 24 * 60 * 60) : time();
-            $end = $due_date ?: (time() + 24 * 60 * 60); // Default to 1 day duration
+            $start = $due_date ? $due_date - (3 * 24 * 60 * 60) : $parentStart;
+            $end = $due_date ?: ($parentStart + 24 * 60 * 60); // Default to 1 day duration
 
             $progress = $this->getSubtaskProgress($subTask);
 
@@ -681,41 +693,16 @@ class TaskGanttFormatter extends BaseFormatter implements FormatterInterface
      */
     private function getGroupFillColor(array $task)
     {
-        $groupName = null;
-        
-        // Priority 1: Check if task is directly assigned to a group (owner_gp)
-        if (!empty($task['owner_gp']) && $task['owner_gp'] > 0) {
-            $assignedGroup = $this->db->table('groups')
-                ->eq('id', $task['owner_gp'])
-                ->findOne();
-            
-            if ($assignedGroup && !empty($assignedGroup['name'])) {
-                $groupName = $assignedGroup['name'];
+        // ✅ Use task's CATEGORY color from Kanboard (actual assigned color)
+        if (!empty($task['category_id'])) {
+            $category = $this->categoryModel->getById($task['category_id']);
+            if ($category && !empty($category['color_id'])) {
+                // Get the actual color assigned to this category in Kanboard
+                return $this->colorModel->getColorProperties($category['color_id'])['background'];
             }
         }
         
-        // Priority 2: Get group from user's group membership
-        if (!$groupName) {
-            $userGroup = $this->getUserGroup($task);
-            if ($userGroup && !empty($userGroup['name'])) {
-                $groupName = $userGroup['name'];
-            }
-        }
-        
-        // Generate color using EXACT Group_assign algorithm
-        if ($groupName) {
-            try {
-                // Use Group_assign's exact getGroupColor method
-                $groupColorExt = new GroupColorExtension($this->container);
-                $colorCode = $groupColorExt->getGroupColor($groupName);
-                return '#' . $colorCode;
-            } catch (\Exception $e) {
-                // Fallback if Group_assign is not available
-                // Silent fallback to default color
-            }
-        }
-        
-        // Default light gray for tasks without group
+        // Default light gray for tasks without category or category color
         return '#bdc3c7';
     }
 
