@@ -25,6 +25,14 @@ class TaskGanttFormatter extends BaseFormatter implements FormatterInterface
 
     private static $ids = [];
 
+    /**
+     * Cache for user group lookups
+     *
+     * @access private
+     * @var array
+     */
+    private $groupCache = array();
+
     // NEW:
     protected $groupBy = 'none'; // 'none' | 'group' | 'assignee' | 'sprint'
 
@@ -619,6 +627,108 @@ class TaskGanttFormatter extends BaseFormatter implements FormatterInterface
         return array_values($childIds);
     }
 
-    
+    /**
+     * Get user's group membership (with caching)
+     * 
+     * @access private
+     * @param  array $task
+     * @return array|null Group record with 'group_id' and 'name', or null
+     */
+    private function getUserGroup(array $task)
+    {
+        if (empty($task['owner_id'])) {
+            return null;
+        }
+        
+        // Cache group lookups to avoid multiple DB queries
+        if (isset($this->groupCache[$task['owner_id']])) {
+            return $this->groupCache[$task['owner_id']];
+        }
+        
+        // Query user's group membership
+        $group = $this->db->table('group_has_users')
+            ->columns('group_id', 'groups.name')
+            ->join('groups', 'id', 'group_id')
+            ->eq('user_id', $task['owner_id'])
+            ->findOne();
+        
+        $this->groupCache[$task['owner_id']] = $group;
+        return $group;
+    }
+
+    /**
+     * Get group info for a task (checks owner_gp first, then user membership)
+     * 
+     * @access private
+     * @param  array $task
+     * @return array|null Group info with 'id' and 'name', or null
+     */
+    private function getGroupInfo(array $task)
+    {
+        // Priority 1: Task directly assigned to group (via owner_gp field from Group_assign plugin)
+        if (!empty($task['owner_gp']) && $task['owner_gp'] > 0) {
+            $group = $this->db->table('groups')
+                ->eq('id', $task['owner_gp'])
+                ->findOne();
+            
+            if ($group) {
+                return [
+                    'id' => $group['id'],
+                    'name' => $group['name']
+                ];
+            }
+        }
+        
+        // Priority 2: Get group from user's group membership
+        $userGroup = $this->getUserGroup($task);
+        if ($userGroup && !empty($userGroup['name'])) {
+            return [
+                'id' => $userGroup['group_id'],
+                'name' => $userGroup['name']
+            ];
+        }
+        
+        return null;
+    }
+
+    /**
+     * Get stored progress from metadata (if manually set in Gantt)
+     *
+     * @access private
+     * @param  array $task
+     * @return float|null Returns progress value (0-1) or null if not set
+     */
+    private function getStoredProgress(array $task)
+    {
+        $metadata = $this->taskMetadataModel->getAll($task['id']);
+        if (isset($metadata['gantt_progress']) && $metadata['gantt_progress'] !== '') {
+            // Convert 0-100 to 0-1 range for DHTMLX Gantt
+            return (float) $metadata['gantt_progress'] / 100;
+        }
+        return null;
+    }
+
+    /**
+     * Get group-based fill color for task bar
+     * Uses task's CATEGORY color from Kanboard
+     * 
+     * @access private
+     * @param  array $task
+     * @return string Hex color code with # prefix
+     */
+    private function getGroupFillColor(array $task)
+    {
+        // ✅ Use task's CATEGORY color from Kanboard (actual assigned color)
+        if (!empty($task['category_id'])) {
+            $category = $this->categoryModel->getById($task['category_id']);
+            if ($category && !empty($category['color_id'])) {
+                // Get the actual color assigned to this category in Kanboard
+                return $this->colorModel->getColorProperties($category['color_id'])['background'];
+            }
+        }
+        
+        // Default light gray for tasks without category or category color
+        return '#bdc3c7';
+    }
 
 }
