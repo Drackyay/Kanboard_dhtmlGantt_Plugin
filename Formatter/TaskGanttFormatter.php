@@ -57,8 +57,13 @@ class TaskGanttFormatter extends BaseFormatter implements FormatterInterface
 
         foreach ($this->query->findAll() as $task) {
 
-            // Skip tasks in Done column (filter by column name, not task status)
+            // ✅ Skip tasks in Done column (filter by column name, not task status)
             if (isset($task['column_name']) && strcasecmp($task['column_name'], 'Done') === 0) {
+                continue;
+            }
+
+            // ✅ Skip closed tasks (is_active == 0 means task is closed)
+            if (isset($task['is_active']) && $task['is_active'] == 0) {
                 continue;
             }
 
@@ -265,6 +270,11 @@ class TaskGanttFormatter extends BaseFormatter implements FormatterInterface
         $formattedSubTasks = array();
 
         foreach ($subTasks as $subTask) {
+            // ✅ Skip completed subtasks (status == 2 means Done)
+            if (isset($subTask['status']) && $subTask['status'] == 2) {
+                continue;
+            }
+
             // Kanboard subtasks don't have due_date, use current time as fallback
             $due_date = isset($subTask['due_date']) ? $subTask['due_date'] : null;
             $start = $due_date ? $due_date - (3 * 24 * 60 * 60) : time();

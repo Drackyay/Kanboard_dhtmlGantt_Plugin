@@ -89,3 +89,139 @@
     content: '•' !important;
     font-size: 16px !important;
 }
+/* ========================================
+ * DARK MODE COMPATIBILITY
+ * Ensure text is visible in Galaxy/dark themes
+ * ======================================== */
+
+/* Gantt grid headers and cells - ensure contrast */
+.gantt_grid_head_cell,
+.gantt_grid_head_cell *,
+.gantt_cell {
+    color: inherit !important;
+}
+
+/* Task text in grid */
+.gantt_tree_content,
+.gantt_cell,
+.gantt_grid_data .gantt_cell {
+    color: inherit !important;
+}
+
+/* Timeline headers */
+.gantt_scale_line,
+.gantt_scale_cell,
+.gantt_task_scale .gantt_scale_cell {
+    color: inherit !important;
+}
+
+/* Task bars text */
+.gantt_task_content,
+.gantt_side_content {
+    color: #000 !important; /* Keep task bar text dark as bars are colored */
+}
+
+/* Buttons and controls */
+.gantt_grid_head_add,
+.gantt_add,
+.gantt_delete_btn {
+    color: inherit !important;
+}
+
+/* Lightbox (popup) text */
+.gantt_cal_light,
+.gantt_cal_light_wide,
+.gantt_cal_light .gantt_title,
+.gantt_cal_light input,
+.gantt_cal_light select,
+.gantt_cal_light textarea {
+    color: #333 !important;
+    background-color: #fff !important;
+}
+
+/* Links/dependency arrows - keep visible */
+.gantt_task_link,
+.gantt_line_wrapper {
+    opacity: 1 !important;
+}
+
+/* Tooltip text */
+.gantt_tooltip {
+    color: #333 !important;
+    background-color: #fff !important;
+    border: 1px solid #ccc !important;
+}
+
+/* ========================================
+ * TOOLBAR & CONTROLS - DARK MODE
+ * Remove hardcoded colors to let theme apply
+ * ======================================== */
+
+/* Group by dropdown label and icon */
+.fa-users,
+#dhtmlx-group-by,
+.dhtmlx-gantt-toolbar .fa-users,
+.dhtmlx-gantt-toolbar span {
+    /* Remove any hardcoded colors - let theme apply naturally */
+}
+
+/* Checkbox labels (Move dependencies, Show progress bars) */
+.dhtmlx-toggle,
+.dhtmlx-toggle label,
+label.dhtmlx-toggle {
+    /* Remove any hardcoded colors - let theme apply naturally */
+}
+
+.dhtmlx-toggle input[type="checkbox"] {
+    /* Keep checkboxes visible */
+}
+
+/* ========================================
+ * LEGEND - DARK MODE
+ * Remove hardcoded colors to let theme apply
+ * ======================================== */
+
+/* Legend section and all text within - NO color overrides */
+.dhtmlx-gantt-info,
+.dhtmlx-info-section,
+.dhtmlx-info-section h3,
+.dhtmlx-legend-two-column,
+.dhtmlx-legend-column,
+.dhtmlx-legend-column strong,
+.dhtmlx-legend-column span,
+.dhtmlx-legend-item,
+.dhtmlx-legend-item span {
+    /* Let theme colors apply naturally - don't override */
+}
+
+/* Legend headers (Task Types, Task Categories) */
+.dhtmlx-legend-column strong {
+    /* No opacity override */
+}
+
+/* Legend note text */
+.dhtmlx-legend-note {
+    /* Let theme apply */
+}
+
+/* No categories message */
+.dhtmlx-no-categories {
+    /* Let theme apply */
+}
+
+/* ========================================
+ * WORKLOAD PANEL - DARK MODE
+ * ======================================== */
+
+/* Workload panel text - let theme apply */
+.workload-header h4,
+.workload-loading,
+.workload-task-list {
+    /* No color override */
+}
+
+/* Stats in workload view - let theme apply */
+.dhtmlx-stat-label,
+.dhtmlx-stat-value {
+    /* No color override */
+}

@@ -46,8 +46,6 @@
             </li>
 
             <!-- View buttons (handled by external JS) -->
-            <li><button type="button" class="btn btn-dhtmlx-view" data-view="Quarter Day">Quarter Day</button></li>
-            <li><button type="button" class="btn btn-dhtmlx-view" data-view="Half Day">Half Day</button></li>
             <li><button type="button" class="btn btn-dhtmlx-view" data-view="Day">Day</button></li>
             <li><button type="button" class="btn btn-dhtmlx-view active" data-view="Week">Week</button></li>
             <li><button type="button" class="btn btn-dhtmlx-view" data-view="Month">Month</button></li>
@@ -63,8 +61,8 @@
 
             <!-- Group by dropdown -->
             <div style="display: flex; align-items: center; gap: 6px; margin-left: 10px;">
-                <i class="fa fa-users" style="color: #666;"></i>
-                <span style="font-size: 13px; color: #666;"><?= t('Group by') ?>:</span>
+                <i class="fa fa-users"></i>
+                <span style="font-size: 13px;"><?= t('Group by') ?>:</span>
                 <select id="dhtmlx-group-by" class="btn" style="height: 32px; padding: 5px 10px; font-size: 13px; min-width: 120px; max-width: 150px;">
                     <option value="none"><?= t('None') ?></option>
                     <option value="assignee"><?= t('Assignee') ?></option>
@@ -120,13 +118,13 @@
         </div>
 
         <!-- Task Information Panel -->
-        <div class="dhtmlx-gantt-info" style="flex-shrink: 0;">
+        <div class="dhtmlx-gantt-info" style="flex-shrink: 0; max-height: 250px; overflow-y: auto; overflow-x: hidden;">
             <div class="dhtmlx-info-section">
                 <h3><?= t('Legend') ?></h3>
                 <div class="dhtmlx-legend-two-column">
                     <!-- Left Column: Task Types -->
                     <div class="dhtmlx-legend-column">
-                        <strong style="font-size: 11px; color: #666; display: block; margin-bottom: 5px;">
+                        <strong style="font-size: 11px; display: block; margin-bottom: 5px;">
                             <?= t('Task Types:') ?>
                         </strong>
                         <div class="dhtmlx-legend">
@@ -154,11 +152,11 @@
                     ?>
                         <div class="dhtmlx-legend-column">
                             <?php if ($chunkIndex === 0): ?>
-                                <strong style="font-size: 11px; color: #666; display: block; margin-bottom: 5px;">
+                                <strong style="font-size: 11px; display: block; margin-bottom: 5px;">
                                     <?= t('Task Categories:') ?>
                                 </strong>
                             <?php else: ?>
-                                <strong style="font-size: 11px; color: transparent; display: block; margin-bottom: 5px;">
+                                <strong style="font-size: 11px; visibility: hidden; display: block; margin-bottom: 5px;">
                                     &nbsp;
                                 </strong>
                             <?php endif; ?>
@@ -182,7 +180,7 @@
                     else: 
                     ?>
                         <div class="dhtmlx-legend-column">
-                            <div style="padding: 8px; background: #fff3cd; border-left: 3px solid #ffc107; font-size: 12px;">
+                            <div style="padding: 8px; background: rgba(255, 193, 7, 0.2); border-left: 3px solid #ffc107; font-size: 12px;">
                                 ℹ️ <?= t('No categories used in this project.') ?>
                             </div>
                         </div>
@@ -205,12 +203,10 @@
 
 <style>
 .dhtmlx-gantt-container {
-    border: 1px solid #ddd;
-    background: #fff;
+    border: 1px solid rgba(0,0,0,0.1);
 }
 .dhtmlx-gantt-toolbar {
-    background: #f8f9fa;
-    border-bottom: 1px solid #ddd;
+    border-bottom: 1px solid rgba(0,0,0,0.1);
     padding: 10px;
     display: flex;
     align-items: center;
@@ -219,12 +215,11 @@
 .dhtmlx-toolbar-separator {
     width: 1px;
     height: 20px;
-    background: #ddd;
+    background: rgba(0,0,0,0.2);
     margin: 0 5px;
 }
 .dhtmlx-gantt-info {
-    background: #f8f9fa;
-    border-top: 1px solid #ddd;
+    border-top: 1px solid rgba(0,0,0,0.1);
     padding: 15px;
     display: flex;
     gap: 30px;
@@ -236,8 +231,8 @@
 }
 .dhtmlx-stats { display: flex; gap: 20px; }
 .dhtmlx-stat-item { display: flex; flex-direction: column; align-items: center; }
-.dhtmlx-stat-label { font-size: 12px; color: #666; }
-.dhtmlx-stat-value { font-size: 18px; font-weight: bold; color: #333; }
+.dhtmlx-stat-label { font-size: 12px; }
+.dhtmlx-stat-value { font-size: 18px; font-weight: bold; }
 .dhtmlx-legend { display: flex; flex-direction: column; gap: 5px; }
 .dhtmlx-legend-two-column { display: flex; gap: 30px; }
 .dhtmlx-legend-column { flex: 1; min-width: 0; }
@@ -245,14 +240,13 @@
 .dhtmlx-legend-color { width: 16px; height: 16px; border-radius: 3px; }
 .gantt_task_line.dhtmlx-readonly { opacity: 0.6; }
 .btn-dhtmlx-view.active { background-color: #667eea !important; color: white !important; }
-.dhtmlx-toggle { display: flex; align-items: center; gap: 5px; font-size: 13px; color: #333; cursor: pointer; }
+.dhtmlx-toggle { display: flex; align-items: center; gap: 5px; font-size: 13px; cursor: pointer; }
 .dhtmlx-toggle input[type="checkbox"] { transform: scale(1.1); margin-right: 5px; }
 
 /* Workload Panel Styles */
 .workload-panel {
     width: 100%;
-    background: #fff;
-    border-top: 2px solid #ddd;
+    border-top: 2px solid rgba(0,0,0,0.1);
     max-height: 300px;
     display: block;
     transition: max-height 0.3s ease;
@@ -265,16 +259,14 @@
 }
 
 .workload-header {
-    background: #f8f9fa;
     padding: 10px 15px;
-    border-bottom: 1px solid #ddd;
+    border-bottom: 1px solid rgba(0,0,0,0.1);
 }
 
 .workload-header h4 {
     margin: 0;
     font-size: 14px;
     font-weight: bold;
-    color: #333;
 }
 
 .workload-content {
@@ -285,7 +277,6 @@
 
 .workload-loading {
     text-align: center;
-    color: #999;
     font-style: italic;
 }
 
@@ -295,22 +286,22 @@
 }
 
 .workload-table th {
-    background: #f0f0f0;
+    background: rgba(0,0,0,0.05);
     padding: 10px;
     text-align: left;
     font-weight: bold;
-    border-bottom: 2px solid #ddd;
+    border-bottom: 2px solid rgba(0,0,0,0.1);
     font-size: 13px;
 }
 
 .workload-table td {
     padding: 10px;
-    border-bottom: 1px solid #eee;
+    border-bottom: 1px solid rgba(0,0,0,0.05);
     font-size: 13px;
 }
 
 .workload-table tr:hover {
-    background: #f9f9f9;
+    background: rgba(0,0,0,0.03);
 }
 
 .workload-badge {
@@ -340,7 +331,6 @@
 
 .workload-task-list {
     font-size: 11px;
-    color: #666;
     margin-top: 5px;
 }
 

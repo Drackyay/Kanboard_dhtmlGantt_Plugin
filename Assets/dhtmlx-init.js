@@ -2546,33 +2546,19 @@ function changeViewMode(mode) {
     
     // Use NEW scale configuration format
     switch(mode) {
-        case 'Quarter Day':
-            gantt.config.scales = [
-                {unit: "hour", step: 1, format: "%H"},
-                {unit: "minute", step: 15, format: "%i"}
-            ];
-            gantt.config.min_column_width = 70;
-            break;
-        case 'Half Day':
-            gantt.config.scales = [
-                {unit: "hour", step: 1, format: "%H"},
-                {unit: "minute", step: 30, format: "%i"}
-            ];
-            gantt.config.min_column_width = 70;
-            break;
         case 'Day':
             gantt.config.scales = [
                 {unit: "day", step: 1, format: "%d %M"},
-                {unit: "hour", step: 1, format: "%H"}
+                {unit: "hour", step: 6, format: "%H:%i"}
             ];
-            gantt.config.min_column_width = 70;
+            gantt.config.min_column_width = 250; // ✅ Shows ~2 days
             break;
         case 'Week':
             gantt.config.scales = [
                 {unit: "week", step: 1, format: "Week #%W"},
                 {unit: "day", step: 1, format: "%d %M"}
             ];
-            gantt.config.min_column_width = 50; // Shows ~3 weeks
+            gantt.config.min_column_width = 100; // ✅ Shows ~2 weeks
             break;
         case 'Month':
             gantt.config.scales = [
