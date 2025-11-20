@@ -254,10 +254,10 @@
  * DHtmlX Gantt Initialization Script for Kanboard
  */
 
-// Store users and groups data globally (defined early)
+// Store users and categories data globally (defined early)
 window.projectUsers = [];
-window.projectGroups = [];
-window.groupMemberMap = {};
+window.projectCategories = [];  // Categories from Kanboard (previously groups)
+window.groupMemberMap = {};  // Keep for backward compatibility with cascading logic
 
 // Fetch project members (users and groups) for assignment dropdowns
 function fetchProjectMembers(projectId) {
@@ -280,13 +280,15 @@ function fetchProjectMembers(projectId) {
         if (data.result === 'ok') {
             console.log('Project members loaded:', data);
             window.projectUsers = data.users;
-            window.projectGroups = data.groups;
+            window.projectCategories = data.groups;  // Backend returns categories in 'groups' key
             
-            // Build group member map for cascading dropdowns
+            // Build group member map for cascading dropdowns (keep for backward compatibility)
             window.groupMemberMap = {};
-            data.groups.forEach(function(group) {
-                window.groupMemberMap[group.key] = group.members || [];
-            });
+            if (data.groups) {
+                data.groups.forEach(function(group) {
+                    window.groupMemberMap[group.key] = group.members || [];
+                });
+            }
             
             // Update lightbox sections with the fetched data
             updateLightboxAssignmentOptions();
@@ -304,14 +306,14 @@ function updateLightboxAssignmentOptions() {
     var sections = gantt.config.lightbox.sections;
     
     for (var i = 0; i < sections.length; i++) {
-        if (sections[i].name === 'group') {
-            sections[i].options = window.projectGroups;
+        if (sections[i].name === 'category') {
+            sections[i].options = window.projectCategories;
         } else if (sections[i].name === 'assignee') {
             sections[i].options = window.projectUsers;
         }
     }
     
-    console.log('Lightbox assignment options updated');
+    console.log('Lightbox assignment options updated - Categories:', window.projectCategories.length, 'Users:', window.projectUsers.length);
 }
 
 document.addEventListener('DOMContentLoaded', function() {
@@ -538,13 +540,13 @@ function initDhtmlxGantt() {
         return "";
     };
     
-    // Update tooltip to show group information
+    // Update tooltip to show category and assignee information
     gantt.templates.tooltip_text = function(start, end, task) {
         var assigneeLabel = task.assignee || 'Unassigned';
-        var groupLabel = task.group_name || 'No Group';
+        var categoryLabel = task.group || 'No Category';  // task.group contains category name
         
         return "<b>Task:</b> " + task.text + "<br/>" +
-               "<b>Group:</b> <span style='font-weight:bold;'>" + groupLabel + "</span><br/>" +
+               "<b>Category:</b> <span style='font-weight:bold;'>" + categoryLabel + "</span><br/>" +
                "<b>Assigned to:</b> " + assigneeLabel + "<br/>" +
                "<b>Start:</b> " + gantt.templates.tooltip_date_format(start) + "<br/>" +
                "<b>End:</b> " + gantt.templates.tooltip_date_format(end) + "<br/>" +
@@ -564,7 +566,7 @@ gantt.config.lightbox.sections = [
     ]},
     {name: "description", height: 38, map_to: "text", type: "textarea", focus: true},
     {name: "tasks", height: 22, map_to: "child_tasks", type: "template"},
-    {name: "group", height: 22, map_to: "group_id", type: "select", options: []},
+    {name: "category", height: 22, map_to: "category_id", type: "select", options: []},
     {name: "assignee", height: 22, map_to: "owner_id", type: "select", options: []},
     {name: "priority", height: 22, map_to: "priority", type: "select", options: [
         {key: "low", label: "Low"},
@@ -578,8 +580,8 @@ gantt.config.lightbox.sections = [
 
 // Custom labels for lightbox sections
 gantt.locale.labels.section_type = "Type";
-gantt.locale.labels.section_tasks = "Tasks";
-gantt.locale.labels.section_group = "User Group";
+gantt.locale.labels.section_tasks = "Tasks (Sprint Only)";
+gantt.locale.labels.section_category = "Category";
 gantt.locale.labels.section_assignee = "Assign To";
 gantt.locale.labels.section_kanboard_link = "Quick Actions";
 
@@ -604,9 +606,9 @@ gantt.attachEvent("onBeforeLightbox", function(id) {
         task.owner_id = 0;
     }
     
-    // Set default group_id to 0 (All Users) if not set
-    if (task.group_id === undefined || task.group_id === null) {
-        task.group_id = 0;
+    // Set default category_id to 0 if not set
+    if (task.category_id === undefined || task.category_id === null) {
+        task.category_id = 0;
     }
     
     // Set task_type based on existing properties
@@ -731,12 +733,31 @@ function setupLightboxFieldToggle(retryCount) {
     var toggleFields = function() {
         // Select dropdown value can be string "true"/"false" or boolean
         var isMilestone = typeSelect.value === 'true' || typeSelect.value === true || typeSelect.value === 'milestone';
+        var isSprint = typeSelect.value === 'sprint';
         
-        console.log('Toggling fields, isMilestone:', isMilestone, 'value:', typeSelect.value, 'type:', typeof typeSelect.value);
+        console.log('Toggling fields, isMilestone:', isMilestone, 'isSprint:', isSprint, 'value:', typeSelect.value, 'type:', typeof typeSelect.value);
         
         // Scope to the lightbox markup
         var lightbox = document.querySelector('.gantt_cal_light');
         if (!lightbox) return;
+
+        // ✅ Hide/show Tasks section (only visible for sprints)
+        // Tasks section is a template type, look for div with class containing the section name
+        var tasksContainer = lightbox.querySelector('.gantt_cal_ltext[data-section="tasks"], [id*="tasks"]');
+        if (!tasksContainer) {
+            // Try to find by looking at all labels and finding the one for "Tasks"
+            var labels = lightbox.querySelectorAll('.gantt_cal_lsection');
+            for (var i = 0; i < labels.length; i++) {
+                if (labels[i].textContent.indexOf('Tasks') !== -1) {
+                    tasksContainer = labels[i].nextElementSibling;
+                    var tasksLabel = labels[i];
+                    if (tasksContainer) tasksContainer.style.display = isSprint ? '' : 'none';
+                    if (tasksLabel) tasksLabel.style.display = isSprint ? '' : 'none';
+                    console.log('✅ Tasks section', isSprint ? 'shown' : 'hidden', 'for sprint');
+                    break;
+                }
+            }
+        }
 
         // Hide/show Priority section (select with title="priority")
         var prioritySelect = lightbox.querySelector('select[title="priority"]');
@@ -803,14 +824,14 @@ function setupCascadingAssignmentDropdowns(retryCount) {
         return;
     }
     
-    console.log('Setting up cascading dropdowns with', window.projectUsers.length, 'users and', window.projectGroups.length, 'groups');
+    console.log('Setting up lightbox dropdowns with', window.projectUsers.length, 'users and', window.projectCategories.length, 'categories');
     
     var taskId = gantt.getSelectedId();
-    var groupSelect = lightbox.querySelector('select[title="group"]');
+    var categorySelect = lightbox.querySelector('select[title="category"]');
     var assigneeSelect = lightbox.querySelector('select[title="assignee"]');
     
-    if (!groupSelect || !assigneeSelect) {
-        console.log('Group or assignee select not found:', {group: !!groupSelect, assignee: !!assigneeSelect});
+    if (!categorySelect || !assigneeSelect) {
+        console.log('Category or assignee select not found:', {category: !!categorySelect, assignee: !!assigneeSelect});
         if (retryCount < 20) {
             setTimeout(function() {
                 setupCascadingAssignmentDropdowns(retryCount + 1);
@@ -822,13 +843,19 @@ function setupCascadingAssignmentDropdowns(retryCount) {
     console.log('Cascading dropdowns found!');
     
     // Manually populate the dropdowns since DHtmlX might not have done it yet
-    if (groupSelect.options.length === 0 && window.projectGroups.length > 0) {
-        console.log('Manually populating group dropdown');
-        window.projectGroups.forEach(function(group) {
+    if (categorySelect.options.length === 0 && window.projectCategories.length > 0) {
+        console.log('Manually populating category dropdown');
+        // Add "No Category" option first
+        var noCatOption = document.createElement('option');
+        noCatOption.value = 0;
+        noCatOption.textContent = 'No Category';
+        categorySelect.appendChild(noCatOption);
+        
+        window.projectCategories.forEach(function(category) {
             var option = document.createElement('option');
-            option.value = group.key;
-            option.textContent = group.label;
-            groupSelect.appendChild(option);
+            option.value = category.key;
+            option.textContent = category.label;
+            categorySelect.appendChild(option);
         });
     }
     
@@ -846,9 +873,14 @@ function setupCascadingAssignmentDropdowns(retryCount) {
     var task = taskId ? gantt.getTask(taskId) : null;
     var originalAssignee = task ? (task.owner_id || 0) : 0;
     
-    // Function to filter assignee dropdown based on selected group
+    // Function to filter assignee dropdown based on selected category (REMOVED - categories don't have members)
+    // Categories are independent of users, so no cascading logic needed
+    console.log('✅ Lightbox dropdowns populated successfully');
+    
+    /*
+    // OLD CODE - kept for reference but disabled
     var filterAssignees = function() {
-        var selectedGroupId = parseInt(groupSelect.value) || 0;
+        var selectedGroupId = parseInt(categorySelect.value) || 0;
         console.log('Group changed to:', selectedGroupId);
         
         // Get members of the selected group
@@ -895,12 +927,7 @@ function setupCascadingAssignmentDropdowns(retryCount) {
             }
         }
     }
-    
-    // Apply initial filter
-    filterAssignees();
-    
-    // Add event listener for group changes
-    groupSelect.addEventListener('change', filterAssignees);
+    */ // End of disabled cascading logic
 }
 
 // Handle task save with sprint validation
@@ -2552,7 +2579,7 @@ function changeViewMode(mode) {
                 {unit: "month", step: 1, format: "%F %Y"},
                 {unit: "day", step: 1, format: "%d"}
             ];
-            gantt.config.min_column_width = 15; // ✅ Much narrower = shows ~3-4 months
+            gantt.config.min_column_width = 25; // ✅ Shows ~2 months (less crowded dates)
             break;
     }
     gantt.render();

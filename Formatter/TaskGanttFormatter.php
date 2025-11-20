@@ -4,7 +4,6 @@ namespace Kanboard\Plugin\DhtmlGantt\Formatter;
 
 use Kanboard\Core\Filter\FormatterInterface;
 use Kanboard\Formatter\BaseFormatter;
-use Kanboard\Plugin\DhtmlGantt\Extension\GroupColorExtension;
 
 /**
  * Task Gantt Formatter for DHtmlX Gantt
@@ -25,14 +24,6 @@ class TaskGanttFormatter extends BaseFormatter implements FormatterInterface
     private $links = [];
 
     private static $ids = [];
-
-    /**
-     * Cache for user group lookups
-     *
-     * @access private
-     * @var array
-     */
-    private $groupCache = array();
 
     // NEW:
     protected $groupBy = 'none'; // 'none' | 'group' | 'assignee' | 'sprint'
@@ -55,14 +46,8 @@ class TaskGanttFormatter extends BaseFormatter implements FormatterInterface
     {
         $tasks = array();
         $links = array();
-        $assigneeMap = array(); // Track unique assignees for resource panel
 
         foreach ($this->query->findAll() as $task) {
-
-            // ✅ Skip closed tasks (is_active == 0 means task is closed)
-            if (isset($task['is_active']) && $task['is_active'] == 0) {
-                continue;
-            }
 
             // Skip tasks in Done column (filter by column name, not task status)
             if (isset($task['column_name']) && strcasecmp($task['column_name'], 'Done') === 0) {
@@ -74,17 +59,6 @@ class TaskGanttFormatter extends BaseFormatter implements FormatterInterface
             if (!in_array($formattedTask['id'], self::$ids)) {
                 $tasks[] = $formattedTask;
                 self::$ids[] = $formattedTask['id'];
-                
-                // Collect unique assignees for resource panel
-                if (!empty($task['owner_id'])) {
-                    $userGroup = $this->getUserGroup($task);
-                    $assigneeMap[$task['owner_id']] = array(
-                        'id' => $task['owner_id'],
-                        'text' => $task['assignee_name'] ?: $task['assignee_username'] ?: 'Unassigned',
-                        'group_id' => $userGroup ? $userGroup['group_id'] : null,
-                        'group_name' => $userGroup ? $userGroup['name'] : null
-                    );
-                }
             }
 
             // Handle subtasks
@@ -95,15 +69,12 @@ class TaskGanttFormatter extends BaseFormatter implements FormatterInterface
             }
         }
 
-        // Build resources array from unique assignees
-        $resources = array_values($assigneeMap);
-
         // Get task links for dependencies
         $links = $this->formatLinks();
 
         // --- GROUPING ---
         if ($this->groupBy === 'none') {
-            return array('data' => $tasks, 'links' => $links, 'resources' => $resources);
+            return array('data' => $tasks, 'links' => $links);
         }
 
         $key = $this->groupBy; // 'group' | 'assignee' | 'sprint'
@@ -168,7 +139,7 @@ class TaskGanttFormatter extends BaseFormatter implements FormatterInterface
             $parentId--;
         }
 
-        return array('data' => $data, 'links' => $links, 'resources' => $resources);
+        return array('data' => $data, 'links' => $links);
 
     }
 
@@ -185,31 +156,18 @@ class TaskGanttFormatter extends BaseFormatter implements FormatterInterface
             $this->columns[$task['project_id']] = $this->columnModel->getList($task['project_id']);
         }
 
-        // ✅ Use date_started if available, otherwise fall back to date_creation
-        $start = $task['date_started'] ?: ($task['date_creation'] ?: time());
+        $start = $task['date_started'] ?: time();
         $end = $task['date_due'] ?: ($start + 24 * 60 * 60); // Default to 1 day duration
 
         // Check if task is a milestone
         $metadata = $this->taskMetadataModel->getAll($task['id']);
         $isMilestone = !empty($metadata['is_milestone']) && $metadata['is_milestone'] === '1';
         
-        // Resolve existing child task links once
-        $resolvedChildIds = $this->getChildrenIds((int) $task['id']);
-
         // ✅ Get task type from metadata (default to 'task')
-        $taskType = isset($metadata['task_type']) && $metadata['task_type'] !== '' ? $metadata['task_type'] : '';
-        if ($taskType === '') {
-            $taskType = !empty($resolvedChildIds) ? 'sprint' : 'task';
-        }
+        $taskType = isset($metadata['task_type']) && $metadata['task_type'] !== '' ? $metadata['task_type'] : 'task';
         
-        // Override color for milestones (green) and sprints (purple), otherwise use group-based color
-        if ($isMilestone) {
-            $color = '#27ae60'; // green for milestones
-        } elseif ($taskType === 'sprint') {
-            $color = '#9b59b6'; // purple for sprints
-        } else {
-            $color = $this->getGroupFillColor($task);
-        }
+        // Override color for milestones to green, otherwise use group-based color
+        $color = $isMilestone ? '#27ae60' : $this->getGroupFillColor($task);
         
         // Get group information for tooltip display
         $groupInfo = $this->getGroupInfo($task);
@@ -235,7 +193,10 @@ class TaskGanttFormatter extends BaseFormatter implements FormatterInterface
         }
         
         // For sprints, pre-compute child task IDs from internal links so the lightbox can preselect them
-        $childTaskIds = $taskType === 'sprint' ? $resolvedChildIds : array();
+        $childTaskIds = array();
+        if ($taskType === 'sprint') {
+            $childTaskIds = $this->getChildrenIds((int)$task['id']);
+        }
 
         // ✅ Check for stored progress in metadata first, then fall back to calculated
         $progress = $this->getStoredProgress($task);
@@ -249,20 +210,25 @@ class TaskGanttFormatter extends BaseFormatter implements FormatterInterface
             'start_date' => date('Y-m-d H:i', $start),
             'end_date' => date('Y-m-d H:i', $end),
             'duration' => $this->calculateDuration($start, $end),
-            'progress' => $progress,
+            'progress' => $this->calculateProgress($task),
             'priority' => $this->mapPriority($task['priority']),
             'color' => $color,
             'owner_id' => $task['owner_id'],
         
-            // ✅ Use computed assignee and category-based group
-            'assignee' => $assignee,
-            'group' => $categoryName,  // Using task category for grouping
-            'group_name' => $categoryName,  // Also store in group_name for consistency
+            // make sure these exist for grouping:
+            'assignee' => $task['assignee_name']
+                ?? $task['assignee_username']
+                ?? $task['owner_name']
+                ?? $task['owner_username']
+                ?? t('Unassigned'),
+        
+            // If your "Group" should be swimlane instead, use $task['swimlane_name'] here:
+            'group' => $task['category_name'] ?? t('Ungrouped'),
         
             // Sprint commonly comes from metadata:
             'sprint' => isset($metadata['sprint']) && $metadata['sprint'] !== '' ? $metadata['sprint'] : t('No Sprint'),
         
-            'column_title' => isset($task['column_name']) ? $task['column_name'] : '',
+            'column_title' => $task['column_name'],
             'category_id' => $task['category_id'],
             'link' => $this->helper->url->href('TaskViewController', 'show', array(
                 'project_id' => $task['project_id'], 
@@ -273,11 +239,7 @@ class TaskGanttFormatter extends BaseFormatter implements FormatterInterface
             'is_milestone' => $isMilestone,
             'open' => true,
         
-            // ✅ Add task_type and child_tasks for sprint management
-            'task_type' => $taskType,
-            'child_tasks' => $childTaskIds,
-        
-            // keep internal-link parent (we'll still re-parent the top-level task under the group, subtasks stay under their task)
+            // keep internal-link parent (we’ll still re-parent the top-level task under the group, subtasks stay under their task)
             'parent' => (int) ($this->resolveParentId((int)$task['id']) ?? 0),
         );        
     }
@@ -295,16 +257,10 @@ class TaskGanttFormatter extends BaseFormatter implements FormatterInterface
         $formattedSubTasks = array();
 
         foreach ($subTasks as $subTask) {
-            // ✅ Skip completed subtasks (status == 2 means Done)
-            if (isset($subTask['status']) && $subTask['status'] == 2) {
-                continue;
-            }
-
-            // ✅ Use parent task's date_started or date_creation as fallback for subtasks
-            $parentStart = $parentTask['date_started'] ?: ($parentTask['date_creation'] ?: time());
+            // Kanboard subtasks don't have due_date, use current time as fallback
             $due_date = isset($subTask['due_date']) ? $subTask['due_date'] : null;
-            $start = $due_date ? $due_date - (3 * 24 * 60 * 60) : $parentStart;
-            $end = $due_date ?: ($parentStart + 24 * 60 * 60); // Default to 1 day duration
+            $start = $due_date ? $due_date - (3 * 24 * 60 * 60) : time();
+            $end = $due_date ?: (time() + 24 * 60 * 60); // Default to 1 day duration
 
             $progress = $this->getSubtaskProgress($subTask);
 
@@ -345,23 +301,6 @@ class TaskGanttFormatter extends BaseFormatter implements FormatterInterface
     {
         $diff = ceil(($end - $start) / (24 * 60 * 60));
         return max(1, $diff); // At least 1 day
-    }
-
-    /**
-     * Get stored progress from metadata (if manually set in Gantt)
-     *
-     * @access private
-     * @param  array $task
-     * @return float|null Returns progress value (0-1) or null if not set
-     */
-    private function getStoredProgress(array $task)
-    {
-        $metadata = $this->taskMetadataModel->getAll($task['id']);
-        if (isset($metadata['gantt_progress']) && $metadata['gantt_progress'] !== '') {
-            // Convert 0-100 to 0-1 range for DHTMLX Gantt
-            return (float) $metadata['gantt_progress'] / 100;
-        }
-        return null;
     }
 
     /**
@@ -415,7 +354,7 @@ class TaskGanttFormatter extends BaseFormatter implements FormatterInterface
     }
 
     /**
-     * Get task color based on category
+     * Get task color based on category or priority
      *
      * @access private
      * @param  array $task
@@ -423,14 +362,18 @@ class TaskGanttFormatter extends BaseFormatter implements FormatterInterface
      */
     private function getTaskColor(array $task)
     {
-        // Check if task has category-based color
         if (!empty($task['color_id'])) {
             $colorProperties = $this->colorModel->getColorProperties($task['color_id']);
             return $colorProperties['background'];
         }
 
-        // Default gray for tasks without category color
-        return '#bdc3c7';
+        // Default colors based on priority
+        switch ($task['priority']) {
+            case 3: return '#e74c3c'; // High priority - red
+            case 2: return '#f39c12'; // Medium priority - orange  
+            case 1: return '#3498db'; // Low priority - blue
+            default: return '#95a5a6'; // Normal - gray
+        }
     }
 
     /**
@@ -676,91 +619,6 @@ class TaskGanttFormatter extends BaseFormatter implements FormatterInterface
         return array_values($childIds);
     }
 
-    /**
-     * Get user's group membership (with caching)
-     * 
-     * @access private
-     * @param  array $task
-     * @return array|null Group record with 'group_id' and 'name', or null
-     */
-    private function getUserGroup(array $task)
-    {
-        if (empty($task['owner_id'])) {
-            return null;
-        }
-        
-        // Cache group lookups to avoid multiple DB queries
-        if (isset($this->groupCache[$task['owner_id']])) {
-            return $this->groupCache[$task['owner_id']];
-        }
-        
-        // Query user's group membership
-        $group = $this->db->table('group_has_users')
-            ->columns('group_id', 'groups.name')
-            ->join('groups', 'id', 'group_id')
-            ->eq('user_id', $task['owner_id'])
-            ->findOne();
-        
-        $this->groupCache[$task['owner_id']] = $group;
-        return $group;
-    }
-
-    /**
-     * Get group info for a task (checks owner_gp first, then user membership)
-     * 
-     * @access private
-     * @param  array $task
-     * @return array|null Group info with 'id' and 'name', or null
-     */
-    private function getGroupInfo(array $task)
-    {
-        // Priority 1: Task directly assigned to group (via owner_gp field from Group_assign plugin)
-        if (!empty($task['owner_gp']) && $task['owner_gp'] > 0) {
-            $group = $this->db->table('groups')
-                ->eq('id', $task['owner_gp'])
-                ->findOne();
-            
-            if ($group) {
-                return [
-                    'id' => $group['id'],
-                    'name' => $group['name']
-                ];
-            }
-        }
-        
-        // Priority 2: Get group from user's group membership
-        $userGroup = $this->getUserGroup($task);
-        if ($userGroup && !empty($userGroup['name'])) {
-            return [
-                'id' => $userGroup['group_id'],
-                'name' => $userGroup['name']
-            ];
-        }
-        
-        return null;
-    }
-
-    /**
-     * Get group-based fill color for task bar
-     * Uses EXACT Group_assign CRC32 algorithm for consistency
-     * 
-     * @access private
-     * @param  array $task
-     * @return string Hex color code with # prefix
-     */
-    private function getGroupFillColor(array $task)
-    {
-        // ✅ Use task's CATEGORY color from Kanboard (actual assigned color)
-        if (!empty($task['category_id'])) {
-            $category = $this->categoryModel->getById($task['category_id']);
-            if ($category && !empty($category['color_id'])) {
-                // Get the actual color assigned to this category in Kanboard
-                return $this->colorModel->getColorProperties($category['color_id'])['background'];
-            }
-        }
-        
-        // Default light gray for tasks without category or category color
-        return '#bdc3c7';
-    }
+    
 
 }

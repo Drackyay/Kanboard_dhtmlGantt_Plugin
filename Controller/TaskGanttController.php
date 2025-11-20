@@ -914,58 +914,25 @@ class TaskGanttController extends BaseController
                 }
             }
             
-            // Get project groups
+            // ✅ Get project CATEGORIES (not user groups!)
+            $categories = $this->getProjectGroups($project['id']);  // This already returns categories
             $formattedGroups = array();
             
-            // Build array of all user IDs for "All Users" group
-            $allUserIds = array();
-            foreach ($projectUsers as $user) {
-                if (isset($user['id']) && $user['id'] > 0) {
-                    $allUserIds[] = (int)$user['id'];
-                }
-            }
-            
-            // Add "All Users" option
+            // Add "No Category" option
             $formattedGroups[] = array(
                 'key' => 0,
-                'label' => 'All Users',
-                'members' => $allUserIds
+                'label' => 'No Category'
             );
             
-            // Get groups assigned to this project
-            if (method_exists($this->projectGroupRoleModel, 'getGroups')) {
-                $groups = $this->projectGroupRoleModel->getGroups($project['id']);
-                error_log('DHtmlX Gantt - Found ' . count($groups) . ' groups for project');
-                error_log('DHtmlX Gantt - Groups data: ' . json_encode($groups));
-                
-                foreach ($groups as $group) {
-                    error_log('DHtmlX Gantt - Processing group: ' . json_encode($group));
-                    // API returns 'id' and 'name', not 'group_id' and 'group_name'
-                    $groupId = isset($group['id']) ? $group['id'] : (isset($group['group_id']) ? $group['group_id'] : 0);
-                    $groupName = isset($group['name']) ? $group['name'] : (isset($group['group_name']) ? $group['group_name'] : 'Group #' . $groupId);
-                    
-                    if ($groupId > 0) {
-                        // Get group members
-                        $groupMembers = $this->groupMemberModel->getMembers($groupId);
-                        error_log('DHtmlX Gantt - Group ' . $groupId . ' has ' . count($groupMembers) . ' members');
-                        $memberIds = array();
-                        foreach ($groupMembers as $member) {
-                            if (isset($member['id'])) {
-                                $memberIds[] = (int)$member['id'];
-                            }
-                        }
-                        
-                        $formattedGroups[] = array(
-                            'key' => (int)$groupId,
-                            'label' => $groupName,
-                            'members' => $memberIds
-                        );
-                        error_log('DHtmlX Gantt - Added group: ' . $groupName . ' with members: ' . json_encode($memberIds));
-                    }
-                }
-            } else {
-                error_log('DHtmlX Gantt - projectGroupRoleModel->getGroups method does not exist');
+            // Format categories for frontend dropdown
+            foreach ($categories as $category) {
+                $formattedGroups[] = array(
+                    'key' => (int)$category['id'],
+                    'label' => $category['name']
+                );
             }
+            
+            error_log('DHtmlX Gantt - Found ' . count($categories) . ' categories in project');
             
             error_log('DHtmlX Gantt - Returning data: ' . count($formattedUsers) . ' users, ' . count($formattedGroups) . ' groups');
             
