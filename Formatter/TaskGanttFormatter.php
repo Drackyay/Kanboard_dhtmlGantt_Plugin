@@ -172,31 +172,41 @@ class TaskGanttFormatter extends BaseFormatter implements FormatterInterface
         $start = $task['date_started'] ?: time();
         $end = $task['date_due'] ?: ($start + 24 * 60 * 60); // Default to 1 day duration
 
-        // Check if task is a milestone
+         // Check if task is a milestone
         $metadata = $this->taskMetadataModel->getAll($task['id']);
         $isMilestone = !empty($metadata['is_milestone']) && $metadata['is_milestone'] === '1';
-        
-        // ✅ Get task type from metadata (default to 'task')
-        $taskType = isset($metadata['task_type']) && $metadata['task_type'] !== '' ? $metadata['task_type'] : 'task';
-        
-        // Override color for milestones to green, otherwise use group-based color
+
+        // Determine task type correctly
+        $taskType = isset($metadata['task_type']) && $metadata['task_type'] !== '' 
+            ? $metadata['task_type'] 
+            : 'task';
+
+        // Resolve sprint children
+        $resolvedChildIds = $this->getChildrenIds((int) $task['id']);
+        if ($taskType === 'sprint') {
+            $childTaskIds = $resolvedChildIds;
+        } else {
+            $childTaskIds = array();
+        }
+
+        // Get styling color
         $color = $isMilestone ? '#27ae60' : $this->getGroupFillColor($task);
-        
-        // Get group information for tooltip display
-        $groupInfo = $this->getGroupInfo($task);
-        
-        // ✅ Get owner/assignee name
+
+        // Compute progress
+        $progress = $this->getStoredProgress($task);
+        if ($progress === null) {
+            $progress = $this->calculateProgress($task);
+        }
+
+        // Prepare assignee & group fields
         $assignee = t('Unassigned');
-        
         if (!empty($task['owner_id'])) {
             $owner = $this->userModel->getById($task['owner_id']);
             if ($owner) {
-                // Use username or name, prefer username as it's more commonly displayed
                 $assignee = !empty($owner['username']) ? $owner['username'] : $owner['name'];
             }
         }
-        
-        // ✅ Get category name (used for grouping)
+
         $categoryName = t('Uncategorized');
         if (!empty($task['category_id'])) {
             $category = $this->categoryModel->getById($task['category_id']);
@@ -204,18 +214,7 @@ class TaskGanttFormatter extends BaseFormatter implements FormatterInterface
                 $categoryName = $category['name'];
             }
         }
-        
-        // For sprints, pre-compute child task IDs from internal links so the lightbox can preselect them
-        $childTaskIds = array();
-        if ($taskType === 'sprint') {
-            $childTaskIds = $this->getChildrenIds((int)$task['id']);
-        }
 
-        // ✅ Check for stored progress in metadata first, then fall back to calculated
-        $progress = $this->getStoredProgress($task);
-        if ($progress === null) {
-            $progress = $this->calculateProgress($task);
-        }
         
         return array(
             'id' => $task['id'],
@@ -227,6 +226,9 @@ class TaskGanttFormatter extends BaseFormatter implements FormatterInterface
             'priority' => $this->mapPriority($task['priority']),
             'color' => $color,
             'owner_id' => $task['owner_id'],
+            'task_type' => $taskType,
+            'child_tasks' => $childTaskIds,
+
         
             // make sure these exist for grouping:
             'assignee' => $task['assignee_name']

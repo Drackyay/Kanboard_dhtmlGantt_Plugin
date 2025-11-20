@@ -136,7 +136,13 @@ class TaskGanttController extends BaseController
 
         // Load current metadata to determine stored task type, etc.
         $metadata = $this->taskMetadataModel->getAll($task_id);
-        $currentTaskType = isset($metadata['task_type']) && $metadata['task_type'] !== '' ? $metadata['task_type'] : 'task';
+        //$currentTaskType = isset($metadata['task_type']) && $metadata['task_type'] !== '' ? $metadata['task_type'] : 'task';
+        $currentTaskType = $metadata['task_type'] ?? 'task';
+        // If this task is a sprint, always treat it as sprint even if frontend doesn't resend task_type
+        if ($currentTaskType === 'sprint') {
+            $hasChildTasksPayload = true;
+        }
+
 
         // Update title/description
         if (! empty($changes['text'])) {
@@ -259,9 +265,9 @@ class TaskGanttController extends BaseController
             
             $result = $this->taskModificationModel->update($values);
            
-            if ($result) {
-                $this->adjustParentDuration($task_id);  // Automatically extend parent if needed
-            }
+            // if ($result) {
+            //     $this->adjustParentDuration($task_id);  // Automatically extend parent if needed
+            // }
 
             if (! $result) {
                 error_log('DHtmlX Gantt Save - Failed to update task ' . $task_id);
@@ -518,82 +524,82 @@ class TaskGanttController extends BaseController
      * Automatically adjust parent duration when a child is extended.
      * ✅ ONLY adjusts SPRINTS, not regular parent-child tasks
      */
-    private function adjustParentDuration(int $childId): void
-    {
-        $parentId = $this->getParentIdFromLinks($childId);
-        if (!$parentId) {
-            return;
-        }
+    // private function adjustParentDuration(int $childId): void
+    // {
+    //     $parentId = $this->getParentIdFromLinks($childId);
+    //     if (!$parentId) {
+    //         return;
+    //     }
 
-        $parent = $this->taskModel->getById($parentId);
-        $child  = $this->taskModel->getById($childId);
+    //     $parent = $this->taskModel->getById($parentId);
+    //     $child  = $this->taskModel->getById($childId);
 
-        if (!$parent || !$child) {
-            return;
-        }
+    //     if (!$parent || !$child) {
+    //         return;
+    //     }
         
-        // ✅ ONLY adjust duration for SPRINTS, not regular parent tasks
-        $parentMetadata = $this->taskMetadataModel->getAll($parentId);
-        $isSprint = isset($parentMetadata['task_type']) && $parentMetadata['task_type'] === 'sprint';
+    //     // ✅ ONLY adjust duration for SPRINTS, not regular parent tasks
+    //     $parentMetadata = $this->taskMetadataModel->getAll($parentId);
+    //     $isSprint = isset($parentMetadata['task_type']) && $parentMetadata['task_type'] === 'sprint';
         
-        if (!$isSprint) {
-            error_log('Skipping duration adjustment for non-sprint parent task: ' . $parentId);
-            return;
-        }
+    //     if (!$isSprint) {
+    //         error_log('Skipping duration adjustment for non-sprint parent task: ' . $parentId);
+    //         return;
+    //     }
 
-        $parentStart = $parent['date_started'] ?: $parent['date_creation'];
-        $parentEnd   = $parent['date_due']     ?: $parent['date_creation'];
-        $childStart  = $child['date_started']  ?: $child['date_creation'];
-        $childEnd    = $child['date_due']      ?: $child['date_creation'];
+    //     $parentStart = $parent['date_started'] ?: $parent['date_creation'];
+    //     $parentEnd   = $parent['date_due']     ?: $parent['date_creation'];
+    //     $childStart  = $child['date_started']  ?: $child['date_creation'];
+    //     $childEnd    = $child['date_due']      ?: $child['date_creation'];
 
-        $update = ['id' => $parentId];
-        $needsUpdate = false;
+    //     $update = ['id' => $parentId];
+    //     $needsUpdate = false;
 
-        // Extend parent earlier if child starts earlier
-        if ($childStart && $childStart < $parentStart) {
-            $update['date_started'] = $childStart;
-            $needsUpdate = true;
-        }
+    //     // Extend parent earlier if child starts earlier
+    //     if ($childStart && $childStart < $parentStart) {
+    //         $update['date_started'] = $childStart;
+    //         $needsUpdate = true;
+    //     }
 
-        if ($childEnd && $childEnd > $parentEnd) {
-            $update['date_due'] = $childEnd;
-            $needsUpdate = true;
-        } else {
-            // shrink parent if all children end earlier
-            $latestChildEnd = 0;
-            $children = $this->taskLinkModel->getAll($parentId);
-            foreach ($children as $link) {
-                if (mb_strtolower($link['label']) === 'is parent of') {
-                    $child = $this->taskModel->getById($link['opposite_task_id']);
-                    if ($child && $child['date_due'] > $latestChildEnd) {
-                        $latestChildEnd = $child['date_due'];
-                    }
-                }
-            }
-            if ($latestChildEnd && $latestChildEnd < $parentEnd) {
-                $update['date_due'] = $latestChildEnd;
-                $needsUpdate = true;
-            }
-        }        
+    //     if ($childEnd && $childEnd > $parentEnd) {
+    //         $update['date_due'] = $childEnd;
+    //         $needsUpdate = true;
+    //     } else {
+    //         // shrink parent if all children end earlier
+    //         $latestChildEnd = 0;
+    //         $children = $this->taskLinkModel->getAll($parentId);
+    //         foreach ($children as $link) {
+    //             if (mb_strtolower($link['label']) === 'is parent of') {
+    //                 $child = $this->taskModel->getById($link['opposite_task_id']);
+    //                 if ($child && $child['date_due'] > $latestChildEnd) {
+    //                     $latestChildEnd = $child['date_due'];
+    //                 }
+    //             }
+    //         }
+    //         if ($latestChildEnd && $latestChildEnd < $parentEnd) {
+    //             $update['date_due'] = $latestChildEnd;
+    //             $needsUpdate = true;
+    //         }
+    //     }        
 
-        if ($needsUpdate) {
-            $this->taskModificationModel->update($update);
-        }
-    }
+    //     if ($needsUpdate) {
+    //         $this->taskModificationModel->update($update);
+    //     }
+    // }
 
     /**
      * Resolve parent ID using Kanboard’s internal links (“is child of”).
      */
-    private function getParentIdFromLinks(int $taskId): ?int
-    {
-        $links = $this->taskLinkModel->getAll($taskId);
-        foreach ($links as $link) {
-            if (mb_strtolower($link['label']) === 'is child of') {
-                return (int)$link['opposite_task_id'];
-            }
-        }
-        return null;
-    }
+    // private function getParentIdFromLinks(int $taskId): ?int
+    // {
+    //     $links = $this->taskLinkModel->getAll($taskId);
+    //     foreach ($links as $link) {
+    //         if (mb_strtolower($link['label']) === 'is child of') {
+    //             return (int)$link['opposite_task_id'];
+    //         }
+    //     }
+    //     return null;
+    // }
 
 
     /**
