@@ -198,14 +198,16 @@ class TaskGanttController extends BaseController
             $this->taskMetadataModel->save($task_id, array('task_type' => $currentTaskType));
         }
         
-        // ✅ Handle sprint child_tasks updates
-        $hasChildTasksPayload = isset($changes['child_tasks']);
-        if ($hasChildTasksPayload && $currentTaskType !== 'sprint') {
-            $currentTaskType = 'sprint';
-            error_log('DHtmlX Gantt Save - Inferring sprint type from child_tasks payload for task ' . $task_id);
-            $this->taskMetadataModel->save($task_id, array('task_type' => 'sprint'));
+        // ✅ FIX: Handle category_id updates
+        if (isset($changes['category_id'])) {
+            $values['category_id'] = (int) $changes['category_id'];
+            error_log('DHtmlX Gantt Save - Setting category_id to: ' . $values['category_id']);
         }
-
+        
+        // ✅ FIX: Only handle sprint child_tasks if task is ALREADY a sprint
+        // Don't auto-convert tasks to sprints just because child_tasks array is sent!
+        $hasChildTasksPayload = isset($changes['child_tasks']) && is_array($changes['child_tasks']);
+        
         if ($hasChildTasksPayload && $currentTaskType === 'sprint') {
             $newChildIds = is_array($changes['child_tasks']) ? $changes['child_tasks'] : array();
             $newChildIds = array_values(array_unique(array_map('intval', $newChildIds)));
@@ -314,6 +316,7 @@ class TaskGanttController extends BaseController
             'date_due' => !empty($data['end_date']) ? strtotime($data['end_date']) : null,
             'priority' => $priority,
             'owner_id' => isset($data['owner_id']) ? (int) $data['owner_id'] : 0,
+            'category_id' => isset($data['category_id']) ? (int) $data['category_id'] : 0,  // ✅ FIX: Include category_id
             'creator_id' => $this->userSession->getId(),
         ));
 
@@ -980,12 +983,19 @@ class TaskGanttController extends BaseController
             if (!empty($task['category_id'])) {
                 $category = $this->categoryModel->getById($task['category_id']);
                 if ($category) {
-                    // Get the actual Kanboard color for this category
+                    // ✅ FIX: Get the actual Kanboard color for this category with better error handling
+                    $category['color'] = '#bdc3c7'; // Default gray fallback
+                    
                     if (!empty($category['color_id'])) {
                         $colorProps = $this->colorModel->getColorProperties($category['color_id']);
-                        $category['color'] = $colorProps['background'];
-                    } else {
-                        $category['color'] = '#bdc3c7'; // Default gray
+                        if ($colorProps && isset($colorProps['background']) && !empty($colorProps['background'])) {
+                            $category['color'] = $colorProps['background'];
+                        }
+                    }
+                    
+                    // ✅ Ensure color is always set (never empty/null)
+                    if (empty($category['color'])) {
+                        $category['color'] = '#bdc3c7';
                     }
                     
                     // Use category ID as key to avoid duplicates

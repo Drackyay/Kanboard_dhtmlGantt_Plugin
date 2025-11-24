@@ -164,11 +164,11 @@
                                 <?php foreach ($chunk as $category): ?>
                                     <?php 
                                     // ✅ Use actual Kanboard category color (passed from controller)
-                                    $categoryColor = isset($category['color']) ? $category['color'] : '#bdc3c7';
+                                    $categoryColor = isset($category['color']) && !empty($category['color']) ? $category['color'] : '#bdc3c7';
                                     ?>
                                     <div class="dhtmlx-legend-item">
                                         <span class="dhtmlx-legend-color" 
-                                              style="background: <?= $categoryColor ?>; border: 2px solid #ddd;">
+                                              style="background-color: <?= $categoryColor ?> !important; border: 1px solid rgba(0,0,0,0.2); display: inline-block;">
                                         </span>
                                         <span><?= $this->text->e($category['name']) ?></span>
                                     </div>
@@ -236,8 +236,16 @@
 .dhtmlx-legend { display: flex; flex-direction: column; gap: 5px; }
 .dhtmlx-legend-two-column { display: flex; gap: 30px; }
 .dhtmlx-legend-column { flex: 1; min-width: 0; }
-.dhtmlx-legend-item { display: flex; align-items: center; gap: 8px; }
-.dhtmlx-legend-color { width: 16px; height: 16px; border-radius: 3px; }
+.dhtmlx-legend-item { display: flex; align-items: center; gap: 8px; margin-bottom: 5px; }
+.dhtmlx-legend-color { 
+    width: 16px !important; 
+    height: 16px !important; 
+    min-width: 16px;
+    min-height: 16px;
+    border-radius: 3px; 
+    display: inline-block !important;
+    flex-shrink: 0;
+}
 .gantt_task_line.dhtmlx-readonly { opacity: 0.6; }
 .btn-dhtmlx-view.active { background-color: #667eea !important; color: white !important; }
 .dhtmlx-toggle { display: flex; align-items: center; gap: 5px; font-size: 13px; cursor: pointer; }

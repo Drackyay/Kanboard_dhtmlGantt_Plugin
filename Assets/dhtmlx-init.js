@@ -1918,6 +1918,13 @@ function setupGanttEventHandlers() {
     gantt.attachEvent("onLinkValidation", function(link){
         const s = gantt.getTask(link.source);
         const t = gantt.getTask(link.target);
+        
+        // ✅ FIX: Prevent sprints from being linked (source or target)
+        if (s.task_type === 'sprint' || t.task_type === 'sprint') {
+            singleToast("Sprints cannot be linked to other tasks");
+            return false;
+        }
+        
         const ok = _sameLevelAllowed(s, t);
         if (!ok) singleToast("Rule: only siblings or top-level tasks can be linked.");
         return ok;
@@ -1961,6 +1968,7 @@ function setupGanttEventHandlers() {
                     end_date: formattedEndDate,
                     priority: task.priority || 'normal',
                     owner_id: task.owner_id || 0,
+                    category_id: task.category_id || 0,  // ✅ FIX: Include category_id
                     task_type: task.task_type || 'task',
                     child_tasks: task.child_tasks || [],
                     is_milestone: task.is_milestone ? 1 : 0
@@ -2072,10 +2080,11 @@ function setupGanttEventHandlers() {
                 end_date:   gantt.date.date_to_str(gantt.config.date_format)(task.end_date),
                 priority: task.priority,
                 owner_id: task.owner_id || 0,
+                category_id: task.category_id || 0,  // ✅ FIX: Save category_id
                 task_type: task.task_type || 'task',
                 child_tasks: task.child_tasks || [],
                 is_milestone: task.is_milestone ? 1 : 0,
-                progress: task.progress || 0  // ✅ Save progress value
+                progress: task.progress || 0
             };
             
             // Debounce: wait for auto-scheduling to complete before saving
@@ -2093,11 +2102,14 @@ function setupGanttEventHandlers() {
             
             console.log('Saving queued tasks:', Object.keys(tasksToSave));
             
+            // Collect all save promises
+            var savePromises = [];
+            
             // Save each task
             for (var taskId in tasksToSave) {
                 var taskData = tasksToSave[taskId];
                 
-                fetch(window.ganttUrls.update, {
+                var savePromise = fetch(window.ganttUrls.update, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
@@ -2108,16 +2120,36 @@ function setupGanttEventHandlers() {
                 .then(data => {
                     if (data.result !== 'ok') {
                         console.error('Failed to save task:', data.message);
+                        return false;
                     }
+                    return true;
                 })
                 .catch(error => {
                     console.error('Error saving task:', error);
+                    return false;
                 });
+                
+                savePromises.push(savePromise);
             }
             
-            // Clear the queue and update workload
+            // Clear the queue
             tasksToSave = {};
-            updateWorkloadPanel(gantt.getTaskByTime(), []);
+            
+            // ✅ After all saves complete, refresh the chart to show updated colors
+            Promise.all(savePromises).then(function(results) {
+                console.log('All task saves completed');
+                var allSuccessful = results.every(function(r) { return r === true; });
+                
+                if (allSuccessful) {
+                    console.log('🔄 Auto-refreshing chart to reflect changes...');
+                    // Small delay to ensure backend has processed everything
+                    setTimeout(function() {
+                        reloadGanttDataFromServer();
+                    }, 300);
+                }
+                
+                updateWorkloadPanel(gantt.getTaskByTime(), []);
+            });
         }
         
         // Handle task deletion
