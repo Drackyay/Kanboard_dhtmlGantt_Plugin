@@ -502,6 +502,12 @@ function initDhtmlxGantt() {
             className += "dhtmlx-readonly ";
         }
         
+        // Add workload-based border class
+        var workloadClass = getWorkloadClassForTask(task);
+        if (workloadClass) {
+            className += workloadClass + " ";
+        }
+        
         return className;
     };
     
@@ -1219,18 +1225,20 @@ function loadGanttData(data) {
         }
     });
     
-    // Update workload panel
+    // Calculate workload status first (updates global map)
+    calculateWorkloadStatus(tasks);
+    
+    // Update workload panel (will also re-render gantt with new border colors)
     updateWorkloadPanel(tasks, resources);
     
     updateStatistics();
 }
 
-// Function to populate custom workload panel
-function updateWorkloadPanel(tasks, resources) {
-    var workloadContent = document.getElementById('workload-content');
-    if (!workloadContent) return;
-    
-    // Group tasks by person
+// Global workload map for quick lookup
+window.workloadStatusMap = {};
+
+// Function to calculate workload status for all assignees
+function calculateWorkloadStatus(tasks) {
     var workloadMap = {};
     
     tasks.forEach(function(task) {
@@ -1253,6 +1261,41 @@ function updateWorkloadPanel(tasks, resources) {
         });
         workloadMap[ownerId].taskCount++;
     });
+    
+    // Calculate workload status for each person
+    var statusMap = {};
+    for (var ownerId in workloadMap) {
+        var person = workloadMap[ownerId];
+        var status = 'workload-available';
+        
+        if (person.taskCount > 5) {
+            status = 'workload-overloaded';
+        } else if (person.taskCount > 2) {
+            status = 'workload-busy';
+        }
+        
+        statusMap[ownerId] = status;
+    }
+    
+    // Update global map
+    window.workloadStatusMap = statusMap;
+    
+    return workloadMap;
+}
+
+// Function to get workload class for a specific task
+function getWorkloadClassForTask(task) {
+    if (!task || !task.owner_id) return '';
+    return window.workloadStatusMap[task.owner_id] || '';
+}
+
+// Function to populate custom workload panel
+function updateWorkloadPanel(tasks, resources) {
+    var workloadContent = document.getElementById('workload-content');
+    if (!workloadContent) return;
+    
+    // Calculate workload status (updates global map)
+    var workloadMap = calculateWorkloadStatus(tasks);
     
     // Build HTML table
     var html = '<table class="workload-table">';
@@ -1299,6 +1342,9 @@ function updateWorkloadPanel(tasks, resources) {
     html += '</tbody></table>';
     
     workloadContent.innerHTML = html;
+    
+    // Re-render gantt to apply new workload border colors
+    gantt.render();
 }
 
 //new
@@ -1426,9 +1472,11 @@ function setupGanttEventHandlers() {
                 task.color = "#27ae60";
             }
             
-            // Update statistics and workload
+            // Recalculate workload status and update panel
+            var allTasks = gantt.getTaskByTime();
+            calculateWorkloadStatus(allTasks);
+            updateWorkloadPanel(allTasks, []);
             updateStatistics();
-            updateWorkloadPanel(gantt.getTaskByTime(), []);
             
             // Send create request to server including all fields
             fetch(window.ganttUrls.create, {
@@ -1520,9 +1568,11 @@ function setupGanttEventHandlers() {
                 });
             }
             
-            // Clear the queue and update workload
+            // Clear the queue and recalculate workload with border colors
             tasksToSave = {};
-            updateWorkloadPanel(gantt.getTaskByTime(), []);
+            var allTasks = gantt.getTaskByTime();
+            calculateWorkloadStatus(allTasks);
+            updateWorkloadPanel(allTasks, []);
         }
         
         // Handle task deletion
@@ -1545,9 +1595,11 @@ function setupGanttEventHandlers() {
                 if (data.result !== 'ok') {
                     console.error('Failed to delete task:', data.message);
                 } else {
-                    // Update workload after successful deletion
+                    // Recalculate workload status and update panel after successful deletion
                     setTimeout(function() {
-                        updateWorkloadPanel(gantt.getTaskByTime(), []);
+                        var allTasks = gantt.getTaskByTime();
+                        calculateWorkloadStatus(allTasks);
+                        updateWorkloadPanel(allTasks, []);
                     }, 100);
                 }
             })
@@ -1925,6 +1977,34 @@ if (groupByAssigneeBtn) {
                     workloadPanel.classList.add('hidden');
                     this.classList.remove('active');
                 }
+            }
+        });
+    }
+
+    // Toggle busyness borders button handler
+    var toggleBusynessBtn = document.getElementById('dhtmlx-toggle-busyness');
+    if (toggleBusynessBtn) {
+        var busynessVisible = true; // Start visible by default
+        toggleBusynessBtn.classList.add('active'); // Start in active state
+        
+        toggleBusynessBtn.addEventListener('click', function() {
+            var ganttContainer = document.getElementById('dhtmlx-gantt-chart');
+            
+            if (ganttContainer) {
+                busynessVisible = !busynessVisible;
+                
+                if (busynessVisible) {
+                    // Show busyness borders
+                    ganttContainer.classList.remove('hide-busyness-borders');
+                    this.classList.add('active');
+                } else {
+                    // Hide busyness borders
+                    ganttContainer.classList.add('hide-busyness-borders');
+                    this.classList.remove('active');
+                }
+                
+                // Re-render gantt to apply changes
+                gantt.render();
             }
         });
     }

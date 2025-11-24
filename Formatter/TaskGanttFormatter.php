@@ -187,8 +187,8 @@ class TaskGanttFormatter extends BaseFormatter implements FormatterInterface
         $metadata = $this->taskMetadataModel->getAll($task['id']);
         $isMilestone = !empty($metadata['is_milestone']) && $metadata['is_milestone'] === '1';
         
-        // Override color for milestones to green, otherwise use group-based color
-        $color = $isMilestone ? '#27ae60' : $this->getGroupFillColor($task);
+        // Override color for milestones to green, otherwise use category-based color
+        $color = $isMilestone ? '#27ae60' : $this->getTaskColor($task);
         
         // Get group information for tooltip display
         $groupInfo = $this->getGroupInfo($task);
@@ -348,13 +348,15 @@ class TaskGanttFormatter extends BaseFormatter implements FormatterInterface
      */
     private function getTaskColor(array $task)
     {
-        // Check if task has category-based color
-        if (!empty($task['color_id'])) {
-            $colorProperties = $this->colorModel->getColorProperties($task['color_id']);
-            return $colorProperties['background'];
+        // Use category color if available
+        if (!empty($task['category_id'])) {
+            $category = $this->categoryModel->getById($task['category_id']);
+            if (!empty($category['color_id'])) {
+                return $this->colorModel->getColorProperties($category['color_id'])['background'];
+            }
         }
-
-        // Default gray for tasks without category color
+        
+        // Default light gray for tasks without category color
         return '#bdc3c7';
     }
 

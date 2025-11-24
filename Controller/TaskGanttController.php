@@ -59,8 +59,20 @@ class TaskGanttController extends BaseController
             $this->taskGanttFormatter->setProject($project);
         }
 
-        // Get all groups in the system (for legend display)
-        $groups = $this->db->table('groups')->findAll();
+        // Get all categories with colors for legend display
+        $categories = $this->categoryModel->getList($project['id'], false);
+        $categoriesWithColors = array();
+        foreach ($categories as $categoryId => $categoryName) {
+            $category = $this->categoryModel->getById($categoryId);
+            if ($category) {
+                $categoriesWithColors[] = array(
+                    'id' => $categoryId,
+                    'name' => $categoryName,
+                    'color_id' => $category['color_id'],
+                    'color' => $this->colorModel->getColorProperties($category['color_id'])['background']
+                );
+            }
+        }
 
         $this->response->html($this->helper->layout->app(
             'DhtmlGantt:task_gantt/show',
@@ -71,8 +83,8 @@ class TaskGanttController extends BaseController
                 'sorting'          => $sorting,
                 'tasks'            => $filter->format($this->taskGanttFormatter),
                 'moveDepsEnabled'  => $moveDepsEnabled,
-                'groupBy'          => $groupBy, // NEW (optional—your template can also read from request)
-                'groups'           => $groups,  // All groups for legend
+                'groupBy'          => $groupBy,
+                'categories'       => $categoriesWithColors,  // Categories with colors for legend
             )
         ));
     }

@@ -91,6 +91,11 @@
                 <i class="fa fa-bar-chart"></i> <?= t('Workload View') ?>
             </button>
 
+            <!-- NEW: Toggle Busyness Borders -->
+            <button id="dhtmlx-toggle-busyness" class="btn active" title="<?= t('Toggle Busyness Borders') ?>">
+                <i class="fa fa-tachometer"></i> <?= t('Show Busyness') ?>
+            </button>
+
             <!-- Toggle: Move Dependencies -->
             <label class="dhtmlx-toggle" style="margin-left: 15px;">
                 <input type="checkbox" id="move-dependencies-toggle">
@@ -129,6 +134,16 @@
              data-remove-link-url="<?= $this->url->href('TaskGanttController', 'removeDependency', array('project_id' => $project['id'], 'plugin' => 'DhtmlGantt')) ?>">
         </div>
 
+        <!-- Custom Workload Panel -->
+        <div id="workload-panel" class="workload-panel">
+            <div class="workload-header">
+                <h4><?= t('Tasks per Person - Workload Summary') ?></h4>
+            </div>
+            <div id="workload-content" class="workload-content">
+                <p class="workload-loading"><?= t('Loading workload data...') ?></p>
+            </div>
+        </div>
+
         <!-- Task Information Panel -->
         <div class="dhtmlx-gantt-info" style="flex-shrink: 0;">
             <div class="dhtmlx-info-section">
@@ -158,50 +173,28 @@
                     </div>
                     
                     <?php
-                    // Display Groups with Group_assign color generation
-                    $groups = $groups ?? [];
+                    // Display Categories with their assigned colors
+                    $categories = $categories ?? [];
                     
-                    // Function to generate colors using EXACT Group_assign algorithm
-                    function getGroupColorInTemplate($groupName) {
-                        // Use EXACT Group_assign CRC32 algorithm
-                        $code = dechex(crc32($groupName));
-                        $code = substr($code, 0, 6);
-                        return '#' . $code;
-                    }
-                    
-                    if (!empty($groups)):
+                    if (!empty($categories)):
                     ?>
                         <strong style="font-size: 11px; color: #666; display: block; margin-top: 10px; margin-bottom: 5px;">
-                            <?= t('User Groups (Fill Colors):') ?>
+                            <?= t('Categories (Fill Colors):') ?>
                         </strong>
-                        <?php foreach ($groups as $group): ?>
-                            <?php 
-                            // Use Group_assign's color generation algorithm directly
-                            $groupColor = getGroupColorInTemplate($group['name']);
-                            ?>
+                        <?php foreach ($categories as $category): ?>
                             <div class="dhtmlx-legend-item">
                                 <span class="dhtmlx-legend-color" 
-                                      style="background: <?= $groupColor ?>; border: 2px solid #ddd;">
+                                      style="background: <?= $this->text->e($category['color']) ?>; border: 2px solid #ddd;">
                                 </span>
-                                <span><?= $this->text->e($group['name']) ?></span>
+                                <span><?= $this->text->e($category['name']) ?></span>
                             </div>
                         <?php endforeach; ?>
                     <?php else: ?>
                         <div style="padding: 8px; background: #fff3cd; border-left: 3px solid #ffc107; margin-top: 10px; font-size: 12px;">
-                            ℹ️ <?= t('No user groups defined. Tasks without groups use default colors.') ?>
+                            ℹ️ <?= t('No categories defined. Go to Project Settings → Categories to add categories with colors.') ?>
                         </div>
                     <?php endif; ?>
                 </div>
-            </div>
-        </div>
-
-        <!-- Custom Workload Panel -->
-        <div id="workload-panel" class="workload-panel">
-            <div class="workload-header">
-                <h4><?= t('Tasks per Person - Workload Summary') ?></h4>
-            </div>
-            <div id="workload-content" class="workload-content">
-                <p class="workload-loading"><?= t('Loading workload data...') ?></p>
             </div>
         </div>
     </div>
@@ -259,6 +252,7 @@
     display: block;
     transition: max-height 0.3s ease;
     overflow: hidden;
+    flex-shrink: 0;
 }
 
 .workload-panel.hidden {
@@ -355,6 +349,11 @@
 }
 
 #dhtmlx-toggle-resources.active {
+    background-color: #667eea !important;
+    color: white !important;
+}
+
+#dhtmlx-toggle-busyness.active {
     background-color: #667eea !important;
     color: white !important;
 }
