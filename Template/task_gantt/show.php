@@ -76,17 +76,26 @@
                 <i class="fa fa-bar-chart"></i> <?= t('Workload View') ?>
             </button>
 
-            <!-- Toggle: Move Dependencies -->
-            <label class="dhtmlx-toggle" style="margin-left: 15px;">
-                <input type="checkbox" id="move-dependencies-toggle">
-                <?= t('Move dependencies with task') ?>
-            </label>
-
-            <!-- Toggle: Show Progress Bars -->
-            <label class="dhtmlx-toggle" style="margin-left: 15px;">
-                <input type="checkbox" id="show-progress-toggle" checked>
-                <?= t('Show progress bars') ?>
-            </label>
+            <!-- Settings Dropdown -->
+            <div class="dhtmlx-settings-dropdown" style="position: relative; display: inline-block; margin-left: 10px;">
+                <button id="dhtmlx-settings-btn" class="btn" title="<?= t('View Settings') ?>">
+                    <i class="fa fa-cog"></i> <?= t('Settings') ?>
+                </button>
+                <div id="dhtmlx-settings-menu" class="dhtmlx-settings-menu" style="display: none;">
+                    <label class="dhtmlx-settings-item">
+                        <input type="checkbox" id="move-dependencies-toggle">
+                        <span><?= t('Move dependencies with task') ?></span>
+                    </label>
+                    <label class="dhtmlx-settings-item">
+                        <input type="checkbox" id="show-progress-toggle" checked>
+                        <span><?= t('Show progress bars') ?></span>
+                    </label>
+                    <label class="dhtmlx-settings-item">
+                        <input type="checkbox" id="show-busyness-toggle" checked>
+                        <span><?= t('Show busyness borders') ?></span>
+                    </label>
+                </div>
+            </div>
 
             <div class="dhtmlx-toolbar-separator"></div>
 
@@ -353,5 +362,48 @@
 #dhtmlx-toggle-resources.active {
     background-color: #667eea !important;
     color: white !important;
+}
+
+/* Settings Dropdown Styles */
+.dhtmlx-settings-dropdown {
+    position: relative;
+    display: inline-block;
+}
+
+.dhtmlx-settings-menu {
+    position: absolute;
+    top: 100%;
+    right: 0;
+    background: white;
+    border: 1px solid rgba(0,0,0,0.15);
+    border-radius: 4px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+    min-width: 220px;
+    z-index: 1000;
+    margin-top: 4px;
+    padding: 8px 0;
+}
+
+.dhtmlx-settings-item {
+    display: flex;
+    align-items: center;
+    padding: 8px 16px;
+    cursor: pointer;
+    transition: background 0.2s;
+    margin: 0;
+}
+
+.dhtmlx-settings-item:hover {
+    background: rgba(0,0,0,0.05);
+}
+
+.dhtmlx-settings-item input[type="checkbox"] {
+    margin: 0 8px 0 0;
+    cursor: pointer;
+}
+
+.dhtmlx-settings-item span {
+    font-size: 13px;
+    user-select: none;
 }
 </style>

@@ -258,6 +258,9 @@ window.projectUsers = [];
 window.projectCategories = [];  // Categories from Kanboard (previously groups)
 window.groupMemberMap = {};  // Keep for backward compatibility with cascading logic
 
+// Global workload map for quick lookup
+window.workloadStatusMap = {};
+
 // Fetch project members (users and groups) for assignment dropdowns
 function fetchProjectMembers(projectId) {
     var url = '?controller=TaskGanttController&action=getProjectMembers&plugin=DhtmlGantt&project_id=' + projectId;
@@ -512,6 +515,12 @@ function initDhtmlxGantt() {
         
         if (task.readonly) {
             className += "dhtmlx-readonly ";
+        }
+        
+        // Add workload-based border class
+        var workloadClass = getWorkloadClassForTask(task);
+        if (workloadClass) {
+            className += workloadClass + " ";
         }
         
         return className;
@@ -1608,11 +1617,8 @@ function loadGanttData(data) {
 }
 
 // Function to populate custom workload panel
-function updateWorkloadPanel(tasks, resources) {
-    var workloadContent = document.getElementById('workload-content');
-    if (!workloadContent) return;
-    
-    // Group tasks by person
+// Function to calculate workload status for all assignees
+function calculateWorkloadStatus(tasks) {
     var workloadMap = {};
     
     tasks.forEach(function(task) {
@@ -1635,6 +1641,40 @@ function updateWorkloadPanel(tasks, resources) {
         });
         workloadMap[ownerId].taskCount++;
     });
+    
+    // Calculate workload status for each person
+    var statusMap = {};
+    for (var ownerId in workloadMap) {
+        var person = workloadMap[ownerId];
+        var status = 'workload-available';
+        
+        if (person.taskCount > 5) {
+            status = 'workload-overloaded';
+        } else if (person.taskCount > 2) {
+            status = 'workload-busy';
+        }
+        
+        statusMap[ownerId] = status;
+    }
+    
+    // Update global map
+    window.workloadStatusMap = statusMap;
+    
+    return workloadMap;
+}
+
+// Function to get workload class for a specific task
+function getWorkloadClassForTask(task) {
+    if (!task || !task.owner_id) return '';
+    return window.workloadStatusMap[task.owner_id] || '';
+}
+
+function updateWorkloadPanel(tasks, resources) {
+    var workloadContent = document.getElementById('workload-content');
+    if (!workloadContent) return;
+    
+    // Calculate workload status (updates global map)
+    var workloadMap = calculateWorkloadStatus(tasks);
     
     // Build HTML table
     var html = '<table class="workload-table">';
@@ -2628,6 +2668,101 @@ function fallbackRefresh() {
                 }
             }
         });
+    }
+
+    // ✅ Settings Dropdown Handler with localStorage persistence
+    var settingsBtn = document.getElementById('dhtmlx-settings-btn');
+    var settingsMenu = document.getElementById('dhtmlx-settings-menu');
+    
+    if (settingsBtn && settingsMenu) {
+        // Toggle dropdown visibility
+        settingsBtn.addEventListener('click', function(e) {
+            e.stopPropagation();
+            var isVisible = settingsMenu.style.display === 'block';
+            settingsMenu.style.display = isVisible ? 'none' : 'block';
+        });
+        
+        // Close dropdown when clicking outside
+        document.addEventListener('click', function(e) {
+            if (!settingsBtn.contains(e.target) && !settingsMenu.contains(e.target)) {
+                settingsMenu.style.display = 'none';
+            }
+        });
+        
+        // Initialize settings from localStorage
+        var moveDepsToggle = document.getElementById('move-dependencies-toggle');
+        var showProgressToggle = document.getElementById('show-progress-toggle');
+        var showBusynessToggle = document.getElementById('show-busyness-toggle');
+        
+        // Load saved states from localStorage (defaults: move=false, progress=true, busyness=true)
+        var savedMoveDeps = localStorage.getItem('ganttMoveDependencies');
+        var savedProgress = localStorage.getItem('ganttShowProgress');
+        var savedBusyness = localStorage.getItem('ganttShowBusyness');
+        
+        if (moveDepsToggle) {
+            moveDepsToggle.checked = savedMoveDeps === 'true';
+            gantt.config.auto_scheduling = moveDepsToggle.checked;
+            gantt.config.auto_scheduling_strict = moveDepsToggle.checked;
+            gantt.config.auto_scheduling_compatibility = moveDepsToggle.checked;
+            console.log('✅ Move dependencies toggle initialized:', moveDepsToggle.checked);
+        }
+        
+        if (showProgressToggle) {
+            showProgressToggle.checked = savedProgress !== 'false'; // Default true
+            gantt.config.show_progress = showProgressToggle.checked;
+            console.log('✅ Show progress toggle initialized:', showProgressToggle.checked);
+        }
+        
+        if (showBusynessToggle) {
+            showBusynessToggle.checked = savedBusyness !== 'false'; // Default true
+            var ganttContainer = document.getElementById('dhtmlx-gantt-chart');
+            if (ganttContainer) {
+                if (showBusynessToggle.checked) {
+                    ganttContainer.classList.remove('hide-busyness-borders');
+                } else {
+                    ganttContainer.classList.add('hide-busyness-borders');
+                }
+            }
+            console.log('✅ Show busyness toggle initialized:', showBusynessToggle.checked);
+        }
+        
+        // Handle Move Dependencies toggle
+        if (moveDepsToggle) {
+            moveDepsToggle.addEventListener('change', function() {
+                gantt.config.auto_scheduling = this.checked;
+                gantt.config.auto_scheduling_strict = this.checked;
+                gantt.config.auto_scheduling_compatibility = this.checked;
+                localStorage.setItem('ganttMoveDependencies', this.checked);
+                console.log('Move dependencies:', this.checked ? 'ON' : 'OFF');
+            });
+        }
+        
+        // Handle Show Progress toggle
+        if (showProgressToggle) {
+            showProgressToggle.addEventListener('change', function() {
+                gantt.config.show_progress = this.checked;
+                localStorage.setItem('ganttShowProgress', this.checked);
+                gantt.render();
+                console.log('Show progress bars:', this.checked ? 'ON' : 'OFF');
+            });
+        }
+        
+        // Handle Show Busyness toggle
+        if (showBusynessToggle) {
+            showBusynessToggle.addEventListener('change', function() {
+                var ganttContainer = document.getElementById('dhtmlx-gantt-chart');
+                if (ganttContainer) {
+                    if (this.checked) {
+                        ganttContainer.classList.remove('hide-busyness-borders');
+                    } else {
+                        ganttContainer.classList.add('hide-busyness-borders');
+                    }
+                    localStorage.setItem('ganttShowBusyness', this.checked);
+                    gantt.render();
+                    console.log('Show busyness borders:', this.checked ? 'ON' : 'OFF');
+                }
+            });
+        }
     }
 
 }

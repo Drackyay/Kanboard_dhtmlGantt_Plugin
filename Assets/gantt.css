@@ -359,6 +359,64 @@
     text-shadow: 0 1px 2px rgba(255,255,255,0.8) !important;
 }
 
+/* Workload-based border colors - ONLY border, keep fill color from group */
+/* These borders are shown by default and hidden when .hide-busyness-borders class is present */
+.gantt_task_line.workload-available {
+    border: 3px solid #27ae60 !important; /* Green border for available */
+    background: var(--dhx-gantt-task-background) !important; /* Preserve group color */
+}
+
+.gantt_task_line.workload-busy {
+    border: 3px solid #f39c12 !important; /* Orange border for busy */
+    background: var(--dhx-gantt-task-background) !important; /* Preserve group color */
+}
+
+.gantt_task_line.workload-overloaded {
+    border: 3px solid #e74c3c !important; /* Red border for overloaded */
+    background: var(--dhx-gantt-task-background) !important; /* Preserve group color */
+}
+
+/* Ensure borders show on hover and during drag, preserve background */
+.gantt_task_line.workload-available:hover,
+.gantt_task_line.workload-available.gantt_drag_move,
+.gantt_task_line.workload-available.gantt_selected {
+    border-color: #27ae60 !important;
+    background: var(--dhx-gantt-task-background) !important;
+}
+
+.gantt_task_line.workload-busy:hover,
+.gantt_task_line.workload-busy.gantt_drag_move,
+.gantt_task_line.workload-busy.gantt_selected {
+    border-color: #f39c12 !important;
+    background: var(--dhx-gantt-task-background) !important;
+}
+
+.gantt_task_line.workload-overloaded:hover,
+.gantt_task_line.workload-overloaded.gantt_drag_move,
+.gantt_task_line.workload-overloaded.gantt_selected {
+    border-color: #e74c3c !important;
+    background: var(--dhx-gantt-task-background) !important;
+}
+
+/* Hide workload borders when toggle is off - show only subtle default border */
+#dhtmlx-gantt-chart.hide-busyness-borders .gantt_task_line.workload-available,
+#dhtmlx-gantt-chart.hide-busyness-borders .gantt_task_line.workload-busy,
+#dhtmlx-gantt-chart.hide-busyness-borders .gantt_task_line.workload-overloaded {
+    border: 1px solid #888 !important; /* Default subtle border */
+}
+
+#dhtmlx-gantt-chart.hide-busyness-borders .gantt_task_line.workload-available:hover,
+#dhtmlx-gantt-chart.hide-busyness-borders .gantt_task_line.workload-available.gantt_drag_move,
+#dhtmlx-gantt-chart.hide-busyness-borders .gantt_task_line.workload-available.gantt_selected,
+#dhtmlx-gantt-chart.hide-busyness-borders .gantt_task_line.workload-busy:hover,
+#dhtmlx-gantt-chart.hide-busyness-borders .gantt_task_line.workload-busy.gantt_drag_move,
+#dhtmlx-gantt-chart.hide-busyness-borders .gantt_task_line.workload-busy.gantt_selected,
+#dhtmlx-gantt-chart.hide-busyness-borders .gantt_task_line.workload-overloaded:hover,
+#dhtmlx-gantt-chart.hide-busyness-borders .gantt_task_line.workload-overloaded.gantt_drag_move,
+#dhtmlx-gantt-chart.hide-busyness-borders .gantt_task_line.workload-overloaded.gantt_selected {
+    border: 1px solid #888 !important; /* Default subtle border on hover */
+}
+
 /* Responsive Design */
 @media (max-width: 768px) {
     .dhtmlx-gantt-toolbar {
