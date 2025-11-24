@@ -258,6 +258,43 @@ window.projectUsers = [];
 window.projectCategories = [];  // Categories from Kanboard (previously groups)
 window.groupMemberMap = {};  // Keep for backward compatibility with cascading logic
 
+// Helper to get user label by ID from projectUsers
+function getUserLabelById(userId) {
+    var defaultLabel = 'Unassigned';
+    var id = parseInt(userId, 10) || 0;
+    if (id === 0) {
+        return defaultLabel;
+    }
+    var users = window.projectUsers || [];
+    for (var i = 0; i < users.length; i++) {
+        var entry = users[i] || {};
+        if (parseInt(entry.key, 10) === id) {
+            return entry.label || defaultLabel;
+        }
+    }
+    return defaultLabel;
+}
+
+function getCategoryColorHex(categoryId) {
+    var defaultColor = '#bdc3c7';
+    var categories = window.projectCategories || [];
+    var id = parseInt(categoryId, 10);
+    if (!id) {
+        return defaultColor;
+    }
+    for (var i = 0; i < categories.length; i++) {
+        var entry = categories[i] || {};
+        var key = typeof entry.key !== 'undefined' ? entry.key : entry.id;
+        if (parseInt(key, 10) === id) {
+            if (entry.color && entry.color.trim() !== '') {
+                return entry.color;
+            }
+            break;
+        }
+    }
+    return defaultColor;
+}
+
 // Global workload map for quick lookup
 window.workloadStatusMap = {};
 
@@ -450,10 +487,10 @@ function initDhtmlxGantt() {
         console.log('📌 Applied saved zoom level on init:', zoomLevels[currentZoomLevel].name);
     } else {
         // Default to day view (level 1)
-        gantt.config.scales = [
-            {unit: "week", step: 1, format: "Week #%W"},
-            {unit: "day", step: 1, format: "%d %M"}
-        ];
+    gantt.config.scales = [
+        {unit: "week", step: 1, format: "Week #%W"},
+        {unit: "day", step: 1, format: "%d %M"}
+    ];
         console.log('Using default zoom level: day view');
     }
     
@@ -572,7 +609,7 @@ gantt.config.lightbox.sections = [
         {key: "milestone", label: "Milestone"},
         {key: "sprint", label: "Sprint"}
     ]},
-    {name: "description", height: 38, map_to: "text", type: "textarea", focus: true},
+    {name: "description", height: 22, map_to: "text", type: "textarea", focus: true},
     {name: "tasks", height: 22, map_to: "child_tasks", type: "template", focus: true},
     {name: "category", height: 22, map_to: "category_id", type: "select", options: []},
     {name: "assignee", height: 22, map_to: "owner_id", type: "select", options: []},
@@ -612,6 +649,11 @@ gantt.attachEvent("onBeforeLightbox", function(id) {
     // Set default owner_id to 0 (unassigned) if not set
     if (task.owner_id === undefined || task.owner_id === null) {
         task.owner_id = 0;
+    }
+    
+    // Ensure assignee label is populated
+    if (!task.assignee || task.assignee === '' || task.assignee === 'Unassigned') {
+        task.assignee = getUserLabelById(task.owner_id);
     }
     
     // Set default category_id to 0 if not set
@@ -717,32 +759,38 @@ function setupLightboxFieldToggle(retryCount) {
     
     console.log('Type select found!');
     
-    var shouldBeMilestone = false;
-    if (taskId && task && task.is_milestone) {
-        shouldBeMilestone = true;
+    // Determine the desired type value to show in the dropdown
+    var desiredType = 'task';
+    if (task) {
+        if (task.task_type) {
+            desiredType = task.task_type;
+        } else if (task.is_milestone) {
+            desiredType = 'milestone';
+        } else if (task.type === 'project') {
+            desiredType = 'sprint';
+        }
     }
     
     // Remove any existing listeners by cloning
     var newTypeSelect = typeSelect.cloneNode(true);
     
-    // Set the value on the CLONED element
-    if (shouldBeMilestone) {
-        newTypeSelect.value = 'true';
-        console.log('Set type select to Milestone for task:', taskId);
-    } else {
-        newTypeSelect.value = 'false';
-        console.log('Set type select to Task for task:', taskId);
+    // Ensure the select reflects the current type (task/milestone/sprint)
+    newTypeSelect.value = desiredType;
+    if (newTypeSelect.value !== desiredType) {
+        // fallback if option not rendered yet
+        console.warn('Type option not found, defaulting to "task"');
+        newTypeSelect.value = 'task';
     }
+    console.log('Set type select to', newTypeSelect.value, 'for task:', taskId);
     
     typeSelect.parentNode.replaceChild(newTypeSelect, typeSelect);
     typeSelect = newTypeSelect;
     
     // Function to toggle fields based on type
     var toggleFields = function() {
-        // Select dropdown value can be string "true"/"false" or boolean
-        var isMilestone = typeSelect.value === 'true' || typeSelect.value === true || typeSelect.value === 'milestone';
-        //var isSprint = typeSelect.value === 'sprint';
-        var isSprint = (task && task.task_type === 'sprint') || (task && task.type === 'project') || typeSelect.value === 'sprint';
+        var currentValue = typeSelect.value || desiredType;
+        var isMilestone = currentValue === 'milestone' || (task && task.is_milestone);
+        var isSprint = currentValue === 'sprint' || (task && (task.task_type === 'sprint' || task.type === 'project'));
         
         console.log('Toggling fields, isMilestone:', isMilestone, 'isSprint:', isSprint, 'value:', typeSelect.value, 'type:', typeof typeSelect.value);
         
@@ -750,22 +798,11 @@ function setupLightboxFieldToggle(retryCount) {
         var lightbox = document.querySelector('.gantt_cal_light');
         if (!lightbox) return;
 
-        // ✅ Hide/show Tasks section (only visible for sprints)
-        // Tasks section is a template type, look for div with class containing the section name
-        var tasksContainer = lightbox.querySelector('.gantt_cal_ltext[data-section="tasks"], [id*="tasks"]');
-        if (!tasksContainer) {
-            // Try to find by looking at all labels and finding the one for "Tasks"
-            var labels = lightbox.querySelectorAll('.gantt_cal_lsection');
-            for (var i = 0; i < labels.length; i++) {
-                if (labels[i].textContent.indexOf('Tasks') !== -1) {
-                    tasksContainer = labels[i].nextElementSibling;
-                    var tasksLabel = labels[i];
-                    if (tasksContainer) tasksContainer.style.display = isSprint ? '' : 'none';
-                    if (tasksLabel) tasksLabel.style.display = isSprint ? '' : 'none';
-                    console.log('✅ Tasks section', isSprint ? 'shown' : 'hidden', 'for sprint');
-                    break;
-                }
-            }
+        // Toggle sprint tasks visibility class (prevents flashing)
+        if (isSprint) {
+            lightbox.classList.add('gantt-show-sprint-tasks');
+        } else {
+            lightbox.classList.remove('gantt-show-sprint-tasks');
         }
 
         // Hide/show Priority section (select with title="priority")
@@ -802,6 +839,16 @@ function setupLightboxFieldToggle(retryCount) {
     // Apply on change
     typeSelect.addEventListener('change', function() {
         console.log('Type changed to:', typeSelect.value);
+        if (task) {
+            var newTypeValue = typeSelect.value || 'task';
+            task.task_type = newTypeValue;
+            task.is_milestone = newTypeValue === 'milestone';
+            if (newTypeValue === 'sprint') {
+                task.type = 'project';
+            } else {
+                task.type = 'task';
+            }
+        }
         toggleFields();
     });
 }
@@ -881,6 +928,19 @@ function setupCascadingAssignmentDropdowns(retryCount) {
     // Store the original assignee value
     var task = taskId ? gantt.getTask(taskId) : null;
     var originalAssignee = task ? (task.owner_id || 0) : 0;
+
+    if (categorySelect) {
+        categorySelect.addEventListener('change', function() {
+            var selectedCategoryId = parseInt(this.value, 10) || 0;
+            if (task) {
+                task.category_id = selectedCategoryId;
+                if (!task.is_milestone && task.task_type !== 'sprint') {
+                    task.color = getCategoryColorHex(selectedCategoryId);
+                    gantt.refreshTask(task.id);
+                }
+            }
+        });
+    }
     
     // Function to filter assignee dropdown based on selected category (REMOVED - categories don't have members)
     // Categories are independent of users, so no cascading logic needed
@@ -1008,9 +1068,10 @@ gantt.attachEvent("onLightboxSave", function(id, task, is_new) {
         return false;
     }
 
-    // Ensure owner_id is integer
+    // Ensure owner_id is integer and update assignee label
     if (task.owner_id !== undefined && task.owner_id !== null) {
         task.owner_id = parseInt(task.owner_id) || 0;
+        task.assignee = getUserLabelById(task.owner_id);
     }
 
     // Validation: Only regular tasks must be assigned
@@ -1041,7 +1102,8 @@ gantt.attachEvent("onLightboxSave", function(id, task, is_new) {
     } else {
         task.type = "task";
         task.is_milestone = false;
-        console.log('Set regular Task');
+        task.color = getCategoryColorHex(task.category_id);
+        console.log('Set regular Task with color', task.color);
     }
     return true; // Allow saving
 });
@@ -1058,6 +1120,12 @@ gantt.form_blocks["template"] = {
             node.innerHTML = '';
             // mark this content node so CSS can target it (hide/show without flash)
             node.classList.add('sprint-tasks-block');
+
+            var isSprintTask = task && (task.task_type === 'sprint' || task.type === 'project');
+            var lightboxEl = document.querySelector('.gantt_cal_light');
+            if (lightboxEl) {
+                lightboxEl.classList.toggle('gantt-show-sprint-tasks', !!isSprintTask);
+            }
             
             // Get all tasks in the project
             var allTasks = gantt.getTaskByTime();
@@ -1076,11 +1144,19 @@ gantt.form_blocks["template"] = {
             var searchInput = document.createElement('input');
             searchInput.type = 'text';
             searchInput.placeholder = 'Search and select tasks...';
-            searchInput.style.cssText = 'width: 100%; padding: 6px; border: 1px solid #ccc; box-sizing: border-box; background: white;';
+            // Check if dark mode is active
+            var isDarkMode = document.body.classList.contains('gantt-dark-mode');
+            var inputStyle = isDarkMode
+                ? 'width: 100%; height: 34px; padding: 6px; border: 1px solid #3a3a3a; box-sizing: border-box; background: #1a1a1a; color: #f5f5f5;'
+                : 'width: 100%; height: 34px; padding: 6px; border: 1px solid #ccc; box-sizing: border-box; background: white;';
+            searchInput.style.cssText = inputStyle;
             
             // Create dropdown panel (hidden by default)
             var dropdownPanel = document.createElement('div');
-            dropdownPanel.style.cssText = 'display: none; position: absolute; left: 0; right: 0; width: 100%; max-height: 200px; overflow-y: auto; border: 1px solid #ccc; border-top: 1px solid #ddd; background: white; z-index: 1000; box-shadow: 0 2px 8px rgba(0,0,0,0.15);';
+            var panelStyle = isDarkMode
+                ? 'display: none; position: absolute; left: 0; right: 0; width: 100%; max-height: 200px; overflow-y: auto; border: 1px solid #3a3a3a; border-top: 1px solid #3a3a3a; background: #0d0d0d; z-index: 1000; box-shadow: 0 2px 8px rgba(0,0,0,0.5);'
+                : 'display: none; position: absolute; left: 0; right: 0; width: 100%; max-height: 200px; overflow-y: auto; border: 1px solid #ccc; border-top: 1px solid #ddd; background: white; z-index: 1000; box-shadow: 0 2px 8px rgba(0,0,0,0.15);';
+            dropdownPanel.style.cssText = panelStyle;
             
             // Store task items for filtering
             var taskItems = [];
@@ -1214,7 +1290,12 @@ gantt.form_blocks["template"] = {
                         if (!t) return;
                         
                         var badge = document.createElement('span');
-                        badge.style.cssText = 'display: inline-block; background: #2196F3; color: white; padding: 4px 8px; margin: 2px; border-radius: 3px; font-size: 12px;';
+                        // Check if dark mode is active
+                        var isDarkMode = document.body.classList.contains('gantt-dark-mode');
+                        var badgeStyle = isDarkMode 
+                            ? 'display: inline-block; background: #1a1a1a; color: #f5f5f5; padding: 4px 8px; margin: 2px; border-radius: 3px; font-size: 12px; border: 1px solid #3a3a3a;'
+                            : 'display: inline-block; background: #2196F3; color: white; padding: 4px 8px; margin: 2px; border-radius: 3px; font-size: 12px;';
+                        badge.style.cssText = badgeStyle;
                         badge.textContent = t.text;
                         
                         var removeBtn = document.createElement('span');
@@ -1974,10 +2055,17 @@ function setupGanttEventHandlers() {
         gantt.attachEvent("onAfterTaskAdd", function(id, task) {
             console.log('New task created, sending to server:', id, task);
             
-            // Apply green color if milestone
+            // Apply color based on type
             if (task.is_milestone) {
                 task.color = "#27ae60";
+            } else if (task.task_type === 'sprint') {
+                task.color = "#9b59b6";
+            } else {
+                task.color = getCategoryColorHex(task.category_id);
             }
+            
+            // Ensure assignee label is set
+            task.assignee = getUserLabelById(task.owner_id);
             
             // Update workload
             updateWorkloadPanel(gantt.getTaskByTime(), []);
@@ -2011,6 +2099,7 @@ function setupGanttEventHandlers() {
                     category_id: task.category_id || 0,  // ✅ FIX: Include category_id
                     task_type: task.task_type || 'task',
                     child_tasks: task.child_tasks || [],
+                    color: task.color || null,
                     is_milestone: task.is_milestone ? 1 : 0
                 })
             })
@@ -2022,7 +2111,7 @@ function setupGanttEventHandlers() {
                     gantt.changeTaskId(id, data.id);
                     console.log('Task ID updated from', id, 'to', data.id);
                     
-                    // ✅ If this is a subtask, create the internal link "is a child of"
+            // ✅ If this is a subtask, create the internal link "is a child of"
                     if (isSubtask) {
                         console.log('🔗 Creating internal link: Task', data.id, 'is a child of', parentTaskId);
                         
@@ -2103,6 +2192,10 @@ function setupGanttEventHandlers() {
             if (task.is_milestone) {
                 task.color = "#27ae60";
                 gantt.refreshTask(id);
+            } else if (task.task_type === 'sprint') {
+                task.color = "#9b59b6";
+            } else {
+                task.color = getCategoryColorHex(task.category_id);
             }
         
             // If this task has a parent, recalc that parent's span (unchanged behavior)
@@ -2122,6 +2215,7 @@ function setupGanttEventHandlers() {
                 owner_id: task.owner_id || 0,
                 category_id: task.category_id || 0,  // ✅ FIX: Save category_id
                 task_type: task.task_type || 'task',
+                color: task.color || null,
                 child_tasks: task.child_tasks || [],
                 is_milestone: task.is_milestone ? 1 : 0,
                 progress: task.progress || 0
@@ -2158,14 +2252,14 @@ function setupGanttEventHandlers() {
                 })
                 .then(response => response.json())
                 .then(data => {
-                    if (data.result !== 'ok') {
-                        console.error('Failed to save task:', data.message);
+                if (data.result !== 'ok') {
+                    console.error('Failed to save task:', data.message);
                         return false;
-                    }
+                }
                     return true;
-                })
-                .catch(error => {
-                    console.error('Error saving task:', error);
+            })
+            .catch(error => {
+                console.error('Error saving task:', error);
                     return false;
                 });
                 
@@ -2482,7 +2576,7 @@ function fallbackRefresh() {
     // As last resort, reload the entire page to get fresh data
     // (View mode is saved in localStorage so it will be restored)
     window.location.reload();
-}
+    }
     
     // Toolbar event handlers
     var addTaskBtn = document.getElementById('dhtmlx-add-task');
@@ -2561,7 +2655,39 @@ function fallbackRefresh() {
             }
         });
     }
-
+    
+    
+    // ✅ Dark Mode toggle button
+    var darkModeToggleBtn = document.getElementById('dhtmlx-dark-mode-toggle');
+    if (darkModeToggleBtn) {
+        // Restore saved dark mode preference
+        var savedDarkMode = localStorage.getItem('ganttDarkMode');
+        if (savedDarkMode === 'true') {
+            document.body.classList.add('gantt-dark-mode');
+            darkModeToggleBtn.querySelector('i').className = 'fa fa-sun-o';
+        }
+        
+        darkModeToggleBtn.addEventListener('click', function() {
+            var icon = this.querySelector('i');
+            
+            if (document.body.classList.contains('gantt-dark-mode')) {
+                // Switch to light mode
+                document.body.classList.remove('gantt-dark-mode');
+                icon.className = 'fa fa-moon-o';
+                localStorage.setItem('ganttDarkMode', 'false');
+                console.log('☀️ Switched to light mode');
+            } else {
+                // Switch to dark mode
+                document.body.classList.add('gantt-dark-mode');
+                icon.className = 'fa fa-sun-o';
+                localStorage.setItem('ganttDarkMode', 'true');
+                console.log('🌙 Switched to dark mode');
+            }
+            
+            // Re-render gantt to apply styles
+            gantt.render();
+        });
+    }
     
     // ✅ Expand/Collapse toggle button
     var expandToggleBtn = document.getElementById('dhtmlx-expand-toggle');

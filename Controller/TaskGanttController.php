@@ -930,14 +930,16 @@ class TaskGanttController extends BaseController
             // Add "No Category" option
             $formattedGroups[] = array(
                 'key' => 0,
-                'label' => 'No Category'
+                'label' => 'No Category',
+                'color' => '#bdc3c7',
             );
             
             // Format categories for frontend dropdown
             foreach ($categories as $category) {
                 $formattedGroups[] = array(
                     'key' => (int)$category['id'],
-                    'label' => $category['name']
+                    'label' => $category['name'],
+                    'color' => isset($category['color']) && $category['color'] !== '' ? $category['color'] : '#bdc3c7',
                 );
             }
             

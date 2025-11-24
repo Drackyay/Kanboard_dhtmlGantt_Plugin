@@ -231,11 +231,7 @@ class TaskGanttFormatter extends BaseFormatter implements FormatterInterface
 
         
             // make sure these exist for grouping:
-            'assignee' => $task['assignee_name']
-                ?? $task['assignee_username']
-                ?? $task['owner_name']
-                ?? $task['owner_username']
-                ?? t('Unassigned'),
+            'assignee' => $assignee,
         
             // If your "Group" should be swimlane instead, use $task['swimlane_name'] here:
             'group' => $task['category_name'] ?? t('Ungrouped'),

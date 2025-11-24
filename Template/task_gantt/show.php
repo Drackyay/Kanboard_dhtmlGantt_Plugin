@@ -107,8 +107,16 @@
                 <i class="fa fa-search-minus"></i>
             </button>
 
+            <div class="dhtmlx-toolbar-separator"></div>
+
             <button id="dhtmlx-expand-toggle" class="btn" title="<?= t('Expand All') ?>" data-state="collapsed">
                 <i class="fa fa-expand"></i>
+            </button>
+
+            <div class="dhtmlx-toolbar-separator"></div>
+
+            <button id="dhtmlx-dark-mode-toggle" class="btn" title="<?= t('Toggle Dark Mode') ?>">
+                <i class="fa fa-moon-o"></i>
             </button>
         </div>
 

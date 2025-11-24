@@ -16,6 +16,79 @@
     display: block !important;
 }
 
+/* Hide Sprint Tasks section by default to avoid flash */
+.gantt_cal_light .gantt_cal_lsection:has(+ .sprint-tasks-block),
+.gantt_cal_light .sprint-tasks-block {
+    display: none !important;
+}
+
+/* Show Sprint Tasks section only when the lightbox is in sprint mode */
+.gantt_cal_light.gantt-show-sprint-tasks .gantt_cal_lsection:has(+ .sprint-tasks-block),
+.gantt_cal_light.gantt-show-sprint-tasks .sprint-tasks-block {
+    display: block !important;
+}
+
+/* Normalize control widths/heights inside lightbox */
+.gantt_cal_light .gantt_cal_ltext select,
+.gantt_cal_light .gantt_cal_ltext textarea,
+.gantt_cal_light .gantt_cal_ltext input[type="text"],
+.gantt_cal_light .gantt_cal_ltextarea textarea {
+    width: 100% !important;
+    min-height: 34px;
+    box-sizing: border-box;
+}
+
+.gantt_cal_light .gantt_cal_ltextarea {
+    width: 100% !important;
+}
+
+.gantt_cal_light .gantt_cal_ltext textarea,
+.gantt_cal_light .gantt_cal_ltextarea textarea,
+.gantt_cal_light textarea[id^="input_"] {
+    height: 34px !important;
+    padding: 6px !important;
+    resize: vertical;
+    max-width: 100% !important;
+    width: 100% !important;
+    box-sizing: border-box !important;
+}
+
+.gantt_cal_light .gantt_cal_ltext,
+.gantt_cal_light .gantt_cal_ltextarea {
+    width: 100% !important;
+    padding: 0 !important;
+    float: none !important;
+    clear: both !important;
+    margin-bottom: 12px !important;
+}
+
+.gantt_cal_light .gantt_cal_lsection {
+    width: 100% !important;
+    float: none !important;
+    clear: both !important;
+}
+
+.gantt_cal_light .sprint-tasks-block {
+    margin-top: 0;
+}
+
+/* Add padding between Description and Tasks section */
+.gantt_cal_light .gantt_cal_lsection:has(+ .sprint-tasks-block) {
+    margin-top: 12px !important;
+}
+
+.gantt_cal_light .sprint-tasks-block {
+    margin-top: 12px !important;
+}
+
+.gantt_cal_light.gantt-show-sprint-tasks .gantt_cal_lsection:has(+ .sprint-tasks-block) {
+    margin-top: 16px !important;
+}
+
+.gantt_cal_light.gantt-show-sprint-tasks .sprint-tasks-block {
+    margin-top: 8px !important;
+}
+
 /* ✅ RESPONSIVE LAYOUT: Full viewport height management */
 #main {
     display: flex !important;
@@ -36,6 +109,7 @@
     position: relative;
     min-height: 0 !important; /* Critical for flex children */
     overflow: hidden !important;
+    overscroll-behavior-x: contain !important; /* Prevent browser navigation on horizontal scroll */
 }
 
 /* ✅ RESPONSIVE GANTT CHART: Make chart adapt to viewport */
@@ -45,6 +119,8 @@
     min-height: 0 !important; /* Critical for proper flex sizing */
     position: relative !important;
     overflow: hidden !important; /* DHTMLX handles internal scrolling */
+    overscroll-behavior-x: contain !important; /* Prevent browser navigation on horizontal scroll */
+    overscroll-behavior-y: contain !important; /* Prevent pull-to-refresh on vertical scroll */
 }
 
 /* Ensure Gantt chart internal container uses full height */
@@ -54,6 +130,15 @@
     position: absolute !important;
     top: 0 !important;
     left: 0 !important;
+    overscroll-behavior: contain !important; /* Prevent browser navigation gestures */
+}
+
+/* Prevent browser navigation on timeline scroll */
+.gantt_task,
+.gantt_task_bg,
+.gantt_data_area,
+.gantt_layout_cell {
+    overscroll-behavior-x: contain !important;
 }
 
 /* Ensure toolbar and info panel don't grow */
@@ -69,6 +154,14 @@
     display: flex;
     align-items: center;
     gap: 10px;
+}
+
+.dhtmlx-gantt-toolbar .group-by-block,
+.dhtmlx-gantt-toolbar .group-by-block span,
+.dhtmlx-gantt-toolbar .group-by-block select,
+.dhtmlx-gantt-toolbar .group-by-block i {
+    font-size: 13px !important;
+    color: #2c3e50 !important;
 }
 
 .dhtmlx-toolbar-separator {
@@ -273,11 +366,17 @@
     font-size: 12px;
     color: #34495e !important; /* Darker color for better visibility */
     font-weight: 900 !important;
-    padding: 2px 8px;
+    padding: 4px 10px;
     background: rgba(255,255,255,0.9) !important; /* Semi-transparent white background */
     border-radius: 12px;
     border: 1px solid rgba(52,73,94,0.2);
     text-shadow: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    margin-left: 4px;
+    line-height: 1;
+    vertical-align: middle;
 }
 
 /* Right side content element used by DHTMLX */
@@ -285,6 +384,11 @@
     font-size: 12px;
     font-weight: 900 !important;
     color: #34495e !important;
+    display: flex;
+    align-items: center;
+    height: 100%;
+    margin-left: 4px !important;
+    padding-left: 4px !important;
 }
 /* Progress bar styling - make more transparent */
 .gantt_task_progress_drag {
@@ -320,6 +424,17 @@
     text-rendering: optimizeLegibility;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+}
+
+/* Center regular task labels vertically inside the bar */
+.gantt_task_line:not(.gantt_milestone) .gantt_task_content {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    padding: 0 6px;
+    min-width: 0;
+    text-align: center;
 }
 
 /* Task selection highlighting */
@@ -449,4 +564,540 @@
         font-weight: 900 !important;
         font-size: 12px;
     }
+}
+
+/* ========================================
+   DARK MODE STYLES
+   ======================================== */
+
+body.gantt-dark-mode,
+body.gantt-dark-mode #main,
+body.gantt-dark-mode .page,
+body.gantt-dark-mode .content {
+    background-color: #121212 !important;
+    color: #f5f5f5 !important;
+}
+
+body.gantt-dark-mode #dhtmlx-gantt-chart,
+body.gantt-dark-mode .gantt_container,
+body.gantt-dark-mode .gantt_task_bg,
+body.gantt-dark-mode .gantt_data_area,
+body.gantt-dark-mode .gantt_task_area {
+    background-color: #161616 !important;
+}
+
+body.gantt-dark-mode .gantt_grid,
+body.gantt-dark-mode .gantt_grid_scale,
+body.gantt-dark-mode .gantt_grid_data {
+    background-color: #1c1c1c !important;
+    color: #e0e0e0 !important;
+}
+
+body.gantt-dark-mode .gantt_grid_head_cell,
+body.gantt-dark-mode .gantt_scale_cell {
+    background-color: #202020 !important;
+    color: #e0e0e0 !important;
+    border-color: #3a3a3a !important;
+}
+
+body.gantt-dark-mode .gantt_row,
+body.gantt-dark-mode .gantt_row.odd,
+body.gantt-dark-mode .gantt_cell {
+    border-color: #3a3a3a !important;
+    background-color: #191919 !important;
+    color: #d5d5d5 !important;
+}
+
+body.gantt-dark-mode .gantt_grid_data .gantt_row,
+body.gantt-dark-mode .gantt_grid_data .gantt_row.odd,
+body.gantt-dark-mode .gantt_data_area .gantt_task_row,
+body.gantt-dark-mode .gantt_data_area .gantt_task_row.odd {
+    background-color: #1f1f1f !important;
+    border-color: #3a3a3a !important;
+}
+
+body.gantt-dark-mode .gantt_row:hover {
+    background-color: #272727 !important;
+}
+
+body.gantt-dark-mode .gantt_task_scale {
+    background-color: #2d2d30 !important;
+    border-color: #3e3e42 !important;
+}
+
+body.gantt-dark-mode .gantt_scale_line {
+    border-color: #3a3a3a !important;
+}
+
+body.gantt-dark-mode .gantt_task_scale .gantt_scale_cell,
+body.gantt-dark-mode .gantt_scale_line,
+body.gantt-dark-mode .gantt_task_vline,
+body.gantt-dark-mode .gantt_task .gantt_task_line,
+body.gantt-dark-mode .gantt_grid_data .gantt_cell,
+body.gantt-dark-mode .gantt_task_row .gantt_cell,
+body.gantt-dark-mode .gantt_task_row .gantt_task_cell,
+body.gantt-dark-mode .gantt_scale_cell,
+body.gantt-dark-mode .gantt_grid_head_cell,
+body.gantt-dark-mode .gantt_cell,
+body.gantt-dark-mode .gantt_task_cell,
+body.gantt-dark-mode .gantt_grid_data,
+body.gantt-dark-mode .gantt_data_area,
+body.gantt-dark-mode .gantt_task_bg,
+body.gantt-dark-mode .gantt_links_area,
+body.gantt-dark-mode .gantt_bars_area {
+    border-color: #3a3a3a !important;
+}
+
+body.gantt-dark-mode .gantt_task_bg,
+body.gantt-dark-mode .gantt_task_bg .gantt_task_row,
+body.gantt-dark-mode .gantt_data_area .gantt_task_bg,
+body.gantt-dark-mode .gantt_timeline .gantt_cell,
+body.gantt-dark-mode .gantt_timeline .gantt_task_bg,
+body.gantt-dark-mode .gantt_task_row,
+body.gantt-dark-mode .gantt_task_row.odd {
+    border-color: #3a3a3a !important;
+}
+
+/* Force all borders inside gantt to be grey */
+body.gantt-dark-mode #dhtmlx-gantt-chart *,
+body.gantt-dark-mode .gantt_container *,
+body.gantt-dark-mode .gantt_grid *,
+body.gantt-dark-mode .gantt_data_area *,
+body.gantt-dark-mode .gantt_task_bg * {
+    border-color: #3a3a3a !important;
+}
+
+body.gantt-dark-mode .gantt_task_content {
+    color: #1a1a1a !important;
+    text-shadow: none !important;
+}
+
+body.gantt-dark-mode .gantt_task_line:not(.gantt_milestone):not(.sprint-block) .gantt_task_content {
+    color: #1a1a1a !important;
+}
+
+body.gantt-dark-mode .gantt_task_line .gantt_task_rightside_text {
+    background: rgba(32,32,32,0.95) !important;
+    color: #e5e5e5 !important;
+    border-color: rgba(255,255,255,0.08) !important;
+}
+
+body.gantt-dark-mode .gantt_side_content.gantt_right {
+    color: #dcdcdc !important;
+}
+
+body.gantt-dark-mode .gantt_task_line:hover .gantt_task_rightside_text {
+    background: rgba(45,45,45,1) !important;
+    color: #ffffff !important;
+}
+
+body.gantt-dark-mode .gantt_link_arrow,
+body.gantt-dark-mode .gantt_line_wrapper div {
+    background-color: #569cd6 !important;
+}
+
+body.gantt-dark-mode .gantt_task_progress {
+    background: rgba(255, 255, 255, 0.15) !important;
+}
+
+body.gantt-dark-mode .gantt_task_progress_text {
+    color: #ffffff !important;
+    text-shadow: 0 1px 2px rgba(0,0,0,0.8) !important;
+}
+
+/* Dark mode toolbar */
+body.gantt-dark-mode .dhtmlx-gantt-toolbar {
+    background: #1e1e1f !important;
+    border-color: #2a2a2a !important;
+}
+
+body.gantt-dark-mode .dhtmlx-gantt-info {
+    background: #1f1f1f !important;
+    border: 1px solid #3a3a3a !important;
+    border-color: #3a3a3a !important;
+    color: #dcdcdc !important;
+}
+
+body.gantt-dark-mode .dhtmlx-gantt-container {
+    border: 1px solid #3a3a3a !important;
+}
+
+body.gantt-dark-mode .dhtmlx-info-section,
+body.gantt-dark-mode .dhtmlx-legend,
+body.gantt-dark-mode .dhtmlx-legend-column,
+body.gantt-dark-mode .dhtmlx-legend-two-column {
+    border-color: #3a3a3a !important;
+}
+
+body.gantt-dark-mode .dhtmlx-gantt-toolbar .group-by-block,
+body.gantt-dark-mode .dhtmlx-gantt-toolbar .group-by-block span,
+body.gantt-dark-mode .dhtmlx-gantt-toolbar .group-by-block select,
+body.gantt-dark-mode .dhtmlx-gantt-toolbar .group-by-block i {
+    color: #f0f0f0 !important;
+}
+
+body.gantt-dark-mode .dhtmlx-gantt-toolbar .group-by-block select {
+    background: #252525 !important;
+    color: #f5f5f5 !important;
+    border: 1px solid #3a3a3a !important;
+}
+
+body.gantt-dark-mode .page-header,
+body.gantt-dark-mode .page-footer,
+body.gantt-dark-mode .sidebar {
+    background: #161616 !important;
+    color: #efefef !important;
+}
+
+body.gantt-dark-mode header,
+body.gantt-dark-mode .header,
+body.gantt-dark-mode .page-header a,
+body.gantt-dark-mode .page-header .menu a,
+body.gantt-dark-mode .page-header .title,
+body.gantt-dark-mode .project-header,
+body.gantt-dark-mode .project-header a,
+body.gantt-dark-mode .project-header .menu a {
+    background: #151515 !important;
+    color: #f5f5f5 !important;
+    border-color: #2c2c2c !important;
+}
+
+body.gantt-dark-mode .dropdown-menu,
+body.gantt-dark-mode .dropdown-menu li,
+body.gantt-dark-mode .dropdown-submenu,
+body.gantt-dark-mode .dropdown-menu a {
+    background: #1f1f1f !important;
+    color: #f5f5f5 !important;
+    border-color: #2f2f2f !important;
+}
+
+body.gantt-dark-mode .dropdown-menu a:hover,
+body.gantt-dark-mode .dropdown-menu li:hover > a {
+    background: #292929 !important;
+    color: #ffffff !important;
+}
+
+body.gantt-dark-mode .form-search,
+body.gantt-dark-mode .header .search,
+body.gantt-dark-mode .search,
+body.gantt-dark-mode .search input,
+body.gantt-dark-mode .search .input-addon,
+body.gantt-dark-mode .search .input-addon-field,
+body.gantt-dark-mode .search .input-addon-item {
+    background: #1d1d1d !important;
+    color: #f5f5f5 !important;
+    border: 1px solid #2f2f2f !important;
+}
+
+body.gantt-dark-mode .search .input-addon-item a,
+body.gantt-dark-mode .search .input-addon-item i,
+body.gantt-dark-mode .search .dropdown-menu-link-icon,
+body.gantt-dark-mode .search .dropdown-menu-link-icon i,
+body.gantt-dark-mode .dhtmlx-gantt-toolbar i.fa-cog,
+body.gantt-dark-mode .dhtmlx-gantt-toolbar .fa-caret-down,
+body.gantt-dark-mode .dhtmlx-gantt-toolbar .dropdown-menu-link-icon,
+body.gantt-dark-mode .dhtmlx-gantt-toolbar .dropdown-menu-link-icon i {
+    color: #f5f5f5 !important;
+}
+
+body.gantt-dark-mode .legend,
+body.gantt-dark-mode .panel,
+body.gantt-dark-mode .panel-heading,
+body.gantt-dark-mode .panel-body {
+    background: #181818 !important;
+    color: #efefef !important;
+    border-color: #2c2c2c !important;
+}
+
+body.gantt-dark-mode .select-dropdown-input-container,
+body.gantt-dark-mode .select-dropdown-input-container *,
+body.gantt-dark-mode .project-header .select-dropdown-input-container,
+body.gantt-dark-mode .project-header .select-dropdown-input-container *,
+body.gantt-dark-mode .select-dropdown-input-container input,
+body.gantt-dark-mode .project-header .select-dropdown-input,
+body.gantt-dark-mode .select-dropdown-input {
+    background-color: #000000 !important;
+    background: #000000 !important;
+    color: #f5f5f5 !important;
+    border-color: #2f2f2f !important;
+}
+
+body.gantt-dark-mode .project-header ul.views,
+body.gantt-dark-mode .project-header ul.views li,
+body.gantt-dark-mode .project-header ul.views li a {
+    background: #000000 !important;
+    color: #f5f5f5 !important;
+    border: 1px solid #2f2f2f !important;
+}
+
+body.gantt-dark-mode .project-header ul.views li a i,
+body.gantt-dark-mode .project-header .views li a i {
+    color: #f5f5f5 !important;
+}
+
+body.gantt-dark-mode .project-header ul.views li.active a {
+    background: #080808 !important;
+    border-color: #3a3a3a !important;
+}
+
+body.gantt-dark-mode .page-header .title a,
+body.gantt-dark-mode .page-header .title a i {
+    color: #f5f5f5 !important;
+}
+
+body.gantt-dark-mode .select-dropdown-input::placeholder {
+    color: #aaaaaa !important;
+}
+
+body.gantt-dark-mode .select-dropdown-chevron,
+body.gantt-dark-mode .select-dropdown-input-container .select-loading-icon i {
+    color: #dcdcdc !important;
+}
+
+body.gantt-dark-mode input:not([type="checkbox"]),
+body.gantt-dark-mode select,
+body.gantt-dark-mode textarea {
+    background-color: #202020 !important;
+    color: #f0f0f0 !important;
+    border: 1px solid #3a3a3a !important;
+    box-shadow: none !important;
+}
+
+body.gantt-dark-mode .table,
+body.gantt-dark-mode .table th,
+body.gantt-dark-mode .table td,
+body.gantt-dark-mode .panel,
+body.gantt-dark-mode .listing,
+body.gantt-dark-mode .listing li {
+    background: #151515 !important;
+    color: #efefef !important;
+    border-color: #2b2b2b !important;
+}
+
+body.gantt-dark-mode .content > * ,
+body.gantt-dark-mode .page > * ,
+body.gantt-dark-mode .panel,
+body.gantt-dark-mode .config-box,
+body.gantt-dark-mode .kanboard-section,
+body.gantt-dark-mode .kanboard-table,
+body.gantt-dark-mode .listing,
+body.gantt-dark-mode .listing li,
+body.gantt-dark-mode .page-header,
+body.gantt-dark-mode .project-header,
+body.gantt-dark-mode .sidebar,
+body.gantt-dark-mode .page-footer {
+    border-color: #2f2f2f !important;
+}
+
+body.gantt-dark-mode .btn {
+    background: #2a2a2a !important;
+    color: #f0f0f0 !important;
+    border-color: #3b3b3b !important;
+}
+
+body.gantt-dark-mode .btn:hover {
+    background: #333333 !important;
+    color: #ffffff !important;
+}
+
+body.gantt-dark-mode .dhtmlx-gantt-toolbar .btn {
+    background: #2a2a2a !important;
+    color: #f5f5f5 !important;
+    border-color: #3a3a3a !important;
+}
+
+body.gantt-dark-mode .dhtmlx-gantt-toolbar .btn:hover {
+    background: #353535 !important;
+}
+
+body.gantt-dark-mode .dhtmlx-legend-item,
+body.gantt-dark-mode .dhtmlx-stat-label,
+body.gantt-dark-mode .dhtmlx-info-section h3 {
+    color: #cccccc !important;
+}
+
+body.gantt-dark-mode .dhtmlx-stat-value {
+    color: #ffffff !important;
+}
+
+/* Dark mode button active state */
+body.gantt-dark-mode #dhtmlx-dark-mode-toggle {
+    background-color: #0e639c !important;
+    color: white !important;
+}
+
+/* Dark mode workload view */
+body.gantt-dark-mode #workload-content,
+body.gantt-dark-mode .workload-content,
+body.gantt-dark-mode .workload-panel {
+    background: #000000 !important;
+    color: #f5f5f5 !important;
+    border: 1px solid #3a3a3a !important;
+}
+
+body.gantt-dark-mode .workload-header,
+body.gantt-dark-mode .workload-header h4 {
+    background: #0d0d0d !important;
+    color: #f5f5f5 !important;
+    border-bottom: 1px solid #3a3a3a !important;
+}
+
+body.gantt-dark-mode .workload-table,
+body.gantt-dark-mode .workload-table th,
+body.gantt-dark-mode .workload-table td,
+body.gantt-dark-mode .workload-table thead,
+body.gantt-dark-mode .workload-table tbody,
+body.gantt-dark-mode .workload-table tr {
+    background: #000000 !important;
+    color: #f5f5f5 !important;
+    border-color: #3a3a3a !important;
+}
+
+body.gantt-dark-mode .workload-task-item,
+body.gantt-dark-mode .workload-user-row,
+body.gantt-dark-mode .workload-task-row {
+    background: #0a0a0a !important;
+    color: #f5f5f5 !important;
+    border: 1px solid #3a3a3a !important;
+}
+
+body.gantt-dark-mode .workload-task-item:hover,
+body.gantt-dark-mode .workload-user-row:hover {
+    background: #1a1a1a !important;
+}
+
+body.gantt-dark-mode .workload-user-name,
+body.gantt-dark-mode .workload-task-name,
+body.gantt-dark-mode .workload-status {
+    color: #f5f5f5 !important;
+}
+
+/* Dark mode lightbox (create/edit task dialog) */
+body.gantt-dark-mode .gantt_cal_light,
+body.gantt-dark-mode .gantt_cal_light_wide {
+    background: #000000 !important;
+    border: 1px solid #3a3a3a !important;
+    color: #f5f5f5 !important;
+}
+
+body.gantt-dark-mode .gantt_cal_lsection,
+body.gantt-dark-mode .gantt_cal_ltitle {
+    background: #000000 !important;
+    color: #f5f5f5 !important;
+    border-color: #3a3a3a !important;
+}
+
+body.gantt-dark-mode .gantt_cal_ltitle .gantt_time,
+body.gantt-dark-mode .gantt_cal_ltitle .dhx_title,
+body.gantt-dark-mode .gantt_cal_ltitle_descr,
+body.gantt-dark-mode .gantt_time,
+body.gantt-dark-mode .dhx_title,
+body.gantt-dark-mode .gantt_duration_end_date,
+body.gantt-dark-mode .gantt_duration_end_date span,
+body.gantt-dark-mode .gantt_time_selects,
+body.gantt-dark-mode .gantt_time_selects span {
+    color: #f5f5f5 !important;
+}
+
+body.gantt-dark-mode .gantt_cal_ltitle_close_btn,
+body.gantt-dark-mode .dhx_gantt_icon_close {
+    color: #f5f5f5 !important;
+    opacity: 0.8;
+}
+
+body.gantt-dark-mode .gantt_cal_light label,
+body.gantt-dark-mode .gantt_cal_light .gantt_cal_lsection,
+body.gantt-dark-mode .gantt_cal_light .gantt_section_title {
+    color: #f5f5f5 !important;
+    background: #000000 !important;
+}
+
+body.gantt-dark-mode .gantt_cal_ltext,
+body.gantt-dark-mode .gantt_cal_ltextarea {
+    background: #000000 !important;
+}
+
+body.gantt-dark-mode .gantt_cal_ltext textarea,
+body.gantt-dark-mode .gantt_cal_ltext select,
+body.gantt-dark-mode .gantt_cal_ltext input,
+body.gantt-dark-mode .gantt_cal_ltextarea textarea,
+body.gantt-dark-mode .gantt_time_selects select {
+    background: #1a1a1a !important;
+    color: #f5f5f5 !important;
+    border: 1px solid #3a3a3a !important;
+}
+
+body.gantt-dark-mode .gantt_cal_light .gantt_cal_ltext input::placeholder,
+body.gantt-dark-mode .gantt_cal_light .gantt_cal_ltextarea textarea::placeholder {
+    color: #999999 !important;
+}
+
+body.gantt-dark-mode .gantt_btn_set,
+body.gantt-dark-mode .gantt_btn_set button,
+body.gantt-dark-mode .gantt_save_btn,
+body.gantt-dark-mode .gantt_cancel_btn,
+body.gantt-dark-mode .gantt_delete_btn,
+body.gantt-dark-mode .gantt_delete_btn_set,
+body.gantt-dark-mode .gantt_left_btn_set {
+    background: #000000 !important;
+    color: #f5f5f5 !important;
+    border: 1px solid #000000 !important;
+}
+
+body.gantt-dark-mode .gantt_btn_set div,
+body.gantt-dark-mode .gantt_delete_btn_set div {
+    color: #f5f5f5 !important;
+}
+
+body.gantt-dark-mode .gantt_btn_set button:hover,
+body.gantt-dark-mode .gantt_save_btn:hover,
+body.gantt-dark-mode .gantt_cancel_btn:hover,
+body.gantt-dark-mode .gantt_delete_btn:hover {
+    background: #1a1a1a !important;
+    color: #ffffff !important;
+}
+
+/* Sprint tasks dropdown in dark mode */
+body.gantt-dark-mode .sprint-tasks-block,
+body.gantt-dark-mode .sprint-tasks-block input,
+body.gantt-dark-mode .sprint-tasks-block div {
+    background: #000000 !important;
+    color: #f5f5f5 !important;
+    border-color: #3a3a3a !important;
+}
+
+body.gantt-dark-mode .sprint-tasks-block input::placeholder {
+    color: #999999 !important;
+}
+
+/* Sprint task badges (selected tasks) */
+body.gantt-dark-mode .sprint-tasks-block span[style*="background: rgb(33, 150, 243)"] {
+    background: #1a1a1a !important;
+    color: #f5f5f5 !important;
+    border: 1px solid #3a3a3a !important;
+}
+
+/* Settings dropdown menu in dark mode */
+body.gantt-dark-mode #dhtmlx-settings-menu,
+body.gantt-dark-mode .dhtmlx-settings-menu {
+    background: #000000 !important;
+    color: #f5f5f5 !important;
+    border: 1px solid #3a3a3a !important;
+}
+
+body.gantt-dark-mode #dhtmlx-settings-menu label,
+body.gantt-dark-mode .dhtmlx-settings-menu label,
+body.gantt-dark-mode .dhtmlx-settings-item,
+body.gantt-dark-mode .dhtmlx-settings-item label {
+    background: #000000 !important;
+    color: #f5f5f5 !important;
+    border-color: #3a3a3a !important;
+}
+
+body.gantt-dark-mode .dhtmlx-settings-item:hover {
+    background: #1a1a1a !important;
+}
+
+body.gantt-dark-mode .dhtmlx-settings-item input[type="checkbox"] {
+    accent-color: #0e639c !important;
 }
