@@ -215,6 +215,15 @@ class TaskGanttFormatter extends BaseFormatter implements FormatterInterface
             }
         }
 
+        $parentTaskId = (int) ($this->resolveParentId((int)$task['id']) ?? 0);
+        $sprintId = isset($metadata['sprint_id']) ? (int) $metadata['sprint_id'] : 0;
+        if ($sprintId === 0 && $parentTaskId > 0) {
+            $parentMeta = $this->taskMetadataModel->getAll($parentTaskId);
+            if (isset($parentMeta['task_type']) && $parentMeta['task_type'] === 'sprint') {
+                $sprintId = $parentTaskId;
+            }
+        }
+
         
         return array(
             'id' => $task['id'],
@@ -228,6 +237,7 @@ class TaskGanttFormatter extends BaseFormatter implements FormatterInterface
             'owner_id' => $task['owner_id'],
             'task_type' => $taskType,
             'child_tasks' => $childTaskIds,
+            'sprint_id' => $sprintId,
 
         
             // make sure these exist for grouping:
@@ -251,7 +261,7 @@ class TaskGanttFormatter extends BaseFormatter implements FormatterInterface
             'open' => true,
         
             // keep internal-link parent (we’ll still re-parent the top-level task under the group, subtasks stay under their task)
-            'parent' => (int) ($this->resolveParentId((int)$task['id']) ?? 0),
+            'parent' => $parentTaskId,
         );        
     }
 

@@ -257,6 +257,9 @@
 window.projectUsers = [];
 window.projectCategories = [];  // Categories from Kanboard (previously groups)
 window.groupMemberMap = {};  // Keep for backward compatibility with cascading logic
+window.projectSprints = [];  // Available sprint records for sprint selector
+window.__sprintShortcutMode = false;
+window.__inlineSprintFlow = null;
 
 // Helper to get user label by ID from projectUsers
 function getUserLabelById(userId) {
@@ -273,6 +276,287 @@ function getUserLabelById(userId) {
         }
     }
     return defaultLabel;
+}
+
+function setupSprintSelector(retryCount) {
+    retryCount = retryCount || 0;
+    var lightbox = document.querySelector('.gantt_cal_light');
+    if (!lightbox && retryCount < 10) {
+        setTimeout(function() {
+            setupSprintSelector(retryCount + 1);
+        }, 50);
+        return;
+    }
+    if (!lightbox) {
+        return;
+    }
+
+    var sprintSelect = lightbox.querySelector('select[title="sprint"]');
+    if (!sprintSelect) {
+        if (retryCount < 10) {
+            setTimeout(function() {
+                setupSprintSelector(retryCount + 1);
+            }, 50);
+        }
+        return;
+    }
+
+    var sprintOptions = getSprintOptionsForSelect();
+    var shouldRebuild = sprintSelect.options.length !== sprintOptions.length;
+    if (!shouldRebuild) {
+        var existingOptions = Array.prototype.map.call(sprintSelect.options, function(opt) {
+            return opt.value + '|' + opt.textContent;
+        }).join(',');
+        var desiredOptions = sprintOptions.map(function(opt) {
+            return String(opt.key) + '|' + opt.label;
+        }).join(',');
+        shouldRebuild = existingOptions !== desiredOptions;
+    }
+    if (shouldRebuild) {
+        sprintSelect.innerHTML = '';
+        sprintOptions.forEach(function(opt) {
+            var option = document.createElement('option');
+            option.value = opt.key;
+            option.textContent = opt.label;
+            sprintSelect.appendChild(option);
+        });
+    }
+
+    var taskId = gantt.getSelectedId();
+    var task = taskId ? gantt.getTask(taskId) : null;
+    var defaultSprintId = resolveSprintSelectionForTask(task);
+    sprintSelect.value = String(defaultSprintId);
+    if (task) {
+        task.sprint_id = defaultSprintId;
+    }
+
+    sprintSelect.onchange = function() {
+        var selectedId = parseInt(this.value, 10) || 0;
+        var currentTaskId = gantt.getSelectedId();
+        var currentTask = currentTaskId ? gantt.getTask(currentTaskId) : null;
+        if (currentTask) {
+            currentTask.sprint_id = selectedId;
+            if (selectedId > 0) {
+                currentTask.parent = selectedId;
+            } else if (currentTask.parent && gantt.isTaskExists(currentTask.parent)) {
+                var parentTask = gantt.getTask(currentTask.parent);
+                if (isSprintTask(parentTask)) {
+                    currentTask.parent = 0;
+                }
+            }
+        }
+    };
+
+    var selectContainer = sprintSelect.closest('.gantt_cal_ltext') || sprintSelect.parentElement;
+    if (selectContainer && !selectContainer.querySelector('.gantt-sprint-create-link')) {
+        var createWrapper = document.createElement('div');
+        createWrapper.className = 'gantt-sprint-create-link';
+        var link = document.createElement('a');
+        link.href = 'javascript:void(0)';
+        link.textContent = 'Create sprint';
+        link.addEventListener('click', function(evt) {
+            evt.preventDefault();
+            beginInlineSprintCreation();
+        });
+        createWrapper.appendChild(link);
+        selectContainer.appendChild(createWrapper);
+    }
+}
+
+function flushLightboxValuesToTask(taskId) {
+    if (!taskId || typeof gantt === 'undefined' || !gantt.isTaskExists(taskId)) {
+        return;
+    }
+    var task = gantt.getTask(taskId);
+    (gantt.config.lightbox.sections || []).forEach(function(section) {
+        var ctrl = gantt.getLightboxSection(section.name);
+        if (!ctrl || typeof ctrl.getValue !== 'function') {
+            return;
+        }
+        var value;
+        try {
+            value = ctrl.getValue();
+        } catch (err) {
+            console.warn('Unable to read value for section', section.name, err);
+            return;
+        }
+
+        if (section.name === 'time' && value) {
+            if (value.start_date) task.start_date = value.start_date;
+            if (value.end_date) task.end_date = value.end_date;
+            if (typeof value.duration !== 'undefined') {
+                task.duration = value.duration;
+            }
+            return;
+        }
+
+        if (section.name === 'tasks') {
+            task.child_tasks = value || [];
+            return;
+        }
+
+        if (section.map_to) {
+            task[section.map_to] = value;
+        }
+    });
+    gantt.updateTask(taskId);
+}
+
+function captureInlineTaskSnapshot(task) {
+    if (!task) return null;
+    return {
+        text: task.text,
+        start_date: task.start_date ? new Date(task.start_date) : null,
+        end_date: task.end_date ? new Date(task.end_date) : null,
+        duration: task.duration,
+        priority: task.priority,
+        owner_id: task.owner_id,
+        category_id: task.category_id,
+        task_type: task.task_type,
+        type: task.type,
+        is_milestone: !!task.is_milestone,
+        child_tasks: (task.child_tasks || []).slice(),
+        assignee: task.assignee,
+        parent: task.parent || 0,
+        color: task.color,
+        progress: task.progress || 0,
+        sprint_id: task.sprint_id || 0
+    };
+}
+
+function restoreInlineTaskSnapshot(snapshot) {
+    if (!snapshot || typeof gantt === 'undefined') {
+        return null;
+    }
+    var data = {
+        text: snapshot.text,
+        start_date: snapshot.start_date ? new Date(snapshot.start_date) : (snapshot.end_date ? new Date(snapshot.end_date) : new Date()),
+        duration: snapshot.duration,
+        priority: snapshot.priority,
+        owner_id: snapshot.owner_id,
+        category_id: snapshot.category_id,
+        task_type: snapshot.task_type || 'task',
+        type: snapshot.type || 'task',
+        is_milestone: snapshot.is_milestone,
+        child_tasks: (snapshot.child_tasks || []).slice(),
+        assignee: snapshot.assignee,
+        color: snapshot.color,
+        progress: snapshot.progress || 0,
+        sprint_id: snapshot.sprint_id || 0
+    };
+    if (snapshot.end_date) {
+        data.end_date = new Date(snapshot.end_date);
+    }
+    var parentId = snapshot.parent || 0;
+    var newId = gantt.addTask(data, parentId);
+    gantt.selectTask(newId);
+    if (snapshot.is_milestone) {
+        var newTask = gantt.getTask(newId);
+        newTask.is_milestone = true;
+        newTask.type = 'task';
+        gantt.updateTask(newId);
+    }
+    return newId;
+}
+
+function ensureInlineOriginTask(flow) {
+    if (!flow) {
+        return null;
+    }
+    if (flow.returnTaskId && gantt.isTaskExists(flow.returnTaskId)) {
+        return flow.returnTaskId;
+    }
+    if (!flow.taskSnapshot) {
+        return null;
+    }
+    var restoredId = restoreInlineTaskSnapshot(flow.taskSnapshot);
+    flow.returnTaskId = restoredId;
+    return restoredId;
+}
+
+function beginInlineSprintCreation() {
+    if (typeof gantt === 'undefined') return;
+    var state = gantt.getState ? gantt.getState() : null;
+    var originTaskId = state && state.lightbox ? state.lightbox : gantt.getSelectedId();
+    if (!originTaskId || !gantt.isTaskExists(originTaskId)) {
+        console.warn('No active task selected for sprint assignment.');
+        return;
+    }
+
+    flushLightboxValuesToTask(originTaskId);
+    var originTask = gantt.getTask(originTaskId);
+    var snapshot = captureInlineTaskSnapshot(originTask);
+
+    var sprintData = {
+        text: 'New Sprint',
+        task_type: 'sprint',
+        type: 'project',
+        color: '#9b59b6',
+        owner_id: 0,
+        category_id: 0,
+        child_tasks: [],
+        assignee: 'Unassigned'
+    };
+
+    window.__inlineSprintFlow = {
+        returnTaskId: originTaskId,
+        sprintTempId: null,
+        sprintRealId: null,
+        taskSnapshot: snapshot,
+        pendingSprintId: null,
+        pendingSprintName: null
+    };
+    
+    gantt.hideLightbox();
+
+    var sprintId = gantt.createTask(sprintData, 0);
+    window.__inlineSprintFlow.sprintTempId = sprintId;
+    gantt.showLightbox(sprintId);
+}
+
+function finalizeInlineSprintFlow(closedTaskId, opts) {
+    var flow = window.__inlineSprintFlow;
+    if (!flow) return false;
+    
+    console.log('finalizeInlineSprintFlow called with closedTaskId:', closedTaskId, 'flow:', flow);
+    
+    // Always finalize if we have a flow - don't check task ID match
+    // The sprint lightbox was closed (save or cancel), so restore the original task
+    
+    // Delete the temporary sprint task if it still exists and wasn't saved
+    if (flow.sprintTempId && gantt.isTaskExists(flow.sprintTempId)) {
+        try {
+            gantt.deleteTask(flow.sprintTempId);
+        } catch (e) {
+            console.warn('Could not delete temp sprint task:', e);
+        }
+    }
+
+    var restoredId = ensureInlineOriginTask(flow);
+    console.log('Restored task ID:', restoredId);
+    
+    if (restoredId && gantt.isTaskExists(restoredId)) {
+        var restoredTask = gantt.getTask(restoredId);
+        if (flow.pendingSprintId) {
+            restoredTask.sprint_id = flow.pendingSprintId;
+            if (restoredTask.sprint_id) {
+                restoredTask.parent = flow.pendingSprintId;
+            }
+            gantt.updateTask(restoredId);
+        }
+        
+        // Clear flow before showing lightbox to prevent re-triggering
+        window.__inlineSprintFlow = null;
+        
+        setTimeout(function() {
+            console.log('Re-opening original task lightbox:', restoredId);
+            gantt.showLightbox(restoredId);
+        }, 50);
+    } else {
+        window.__inlineSprintFlow = null;
+    }
+
+    return true;
 }
 
 function getCategoryColorHex(categoryId) {
@@ -293,6 +577,84 @@ function getCategoryColorHex(categoryId) {
         }
     }
     return defaultColor;
+}
+
+function isSprintTask(task) {
+    if (!task) {
+        return false;
+    }
+    return task.task_type === 'sprint' || task.type === 'project';
+}
+
+function updateSprintListFromTasks(tasks) {
+    var sprintMap = {};
+    if (Array.isArray(tasks)) {
+        tasks.forEach(function(task) {
+            if (!task) return;
+            if (isSprintTask(task)) {
+                sprintMap[task.id] = task.text || ('Sprint #' + task.id);
+            }
+        });
+    }
+    window.projectSprints = Object.keys(sprintMap).map(function(id) {
+        return {
+            key: parseInt(id, 10),
+            label: sprintMap[id]
+        };
+    });
+    refreshSprintSectionOptions();
+}
+
+function getSprintOptionsForSelect() {
+    var options = [{
+        key: 0,
+        label: 'No Sprint'
+    }];
+    (window.projectSprints || []).forEach(function(item) {
+        options.push({
+            key: item.key,
+            label: item.label
+        });
+    });
+    return options;
+}
+
+function refreshSprintSectionOptions() {
+    if (!gantt || !gantt.config || !gantt.config.lightbox || !gantt.config.lightbox.sections) {
+        return;
+    }
+    var sprintOptions = getSprintOptionsForSelect();
+    gantt.config.lightbox.sections.forEach(function(section) {
+        if (section.name === 'sprint') {
+            section.options = sprintOptions;
+        }
+    });
+}
+
+function resolveSprintSelectionForTask(task) {
+    if (!task) return 0;
+    if (task.sprint_id) {
+        return parseInt(task.sprint_id, 10) || 0;
+    }
+    if (task.parent && typeof gantt !== 'undefined' && gantt.isTaskExists(task.parent)) {
+        var parentTask = gantt.getTask(task.parent);
+        if (isSprintTask(parentTask)) {
+            return parentTask.id;
+        }
+    }
+    return 0;
+}
+
+function buildSprintCreationUrl() {
+    try {
+        var url = new URL(window.location.href);
+        url.searchParams.set('create_sprint', '1');
+        return url.toString();
+    } catch (err) {
+        var href = window.location.href || '';
+        var glue = href.indexOf('?') === -1 ? '?' : '&';
+        return href + glue + 'create_sprint=1';
+    }
 }
 
 // Global workload map for quick lookup
@@ -349,6 +711,8 @@ function updateLightboxAssignmentOptions() {
             sections[i].options = window.projectCategories;
         } else if (sections[i].name === 'assignee') {
             sections[i].options = window.projectUsers;
+        } else if (sections[i].name === 'sprint') {
+            sections[i].options = getSprintOptionsForSelect();
         }
     }
     
@@ -437,6 +801,7 @@ document.addEventListener('DOMContentLoaded', function() {
         loadGanttData({data: [], links: []});
     }
     applyInitialGrouping();
+    handleCreateSprintShortcut();
 
     
     // Setup URLs from data attributes
@@ -613,6 +978,7 @@ gantt.config.lightbox.sections = [
     {name: "tasks", height: 22, map_to: "child_tasks", type: "template", focus: true},
     {name: "category", height: 22, map_to: "category_id", type: "select", options: []},
     {name: "assignee", height: 22, map_to: "owner_id", type: "select", options: []},
+    {name: "sprint", height: 22, map_to: "sprint_id", type: "select", options: []},
     {name: "priority", height: 22, map_to: "priority", type: "select", options: [
         {key: "low", label: "Low"},
         {key: "normal", label: "Normal"},
@@ -628,6 +994,7 @@ gantt.locale.labels.section_type = "Type";
 gantt.locale.labels.section_tasks = "Tasks (Sprint Only)";
 gantt.locale.labels.section_category = "Category";
 gantt.locale.labels.section_assignee = "Assign To";
+gantt.locale.labels.section_sprint = "Sprint";
 gantt.locale.labels.section_kanboard_link = "Quick Actions";
 
 // Set default values for new tasks
@@ -708,10 +1075,38 @@ var lightboxObserver = new MutationObserver(function(mutations) {
         mutation.addedNodes.forEach(function(node) {
             if (node.nodeType === 1 && node.classList && node.classList.contains('gantt_cal_light')) {
                 console.log('Lightbox detected!');
+
+                // Immediately set milestone/sprint classes before delayed setup to avoid flash
+                try {
+                    var state = gantt.getState ? gantt.getState() : null;
+                    var selectedId = (state && state.lightbox) ? state.lightbox : gantt.getSelectedId();
+                    if (selectedId && gantt.isTaskExists(selectedId)) {
+                        var selectedTask = gantt.getTask(selectedId);
+                        if (selectedTask) {
+                            if (selectedTask.is_milestone || selectedTask.task_type === 'milestone') {
+                                node.classList.add('gantt-milestone-type');
+                            } else {
+                                node.classList.remove('gantt-milestone-type');
+                            }
+                            if (selectedTask.task_type === 'sprint' || selectedTask.type === 'project') {
+                                node.classList.add('gantt-show-sprint-tasks');
+                            } else {
+                                node.classList.remove('gantt-show-sprint-tasks');
+                            }
+                        }
+                    }
+                } catch (err) {
+                    console.warn('Failed to set initial lightbox classes', err);
+                }
                 
+                // Run immediately to avoid flash, then fallback after short delay for lazy elements
+                setupLightboxFieldToggle();
+                setupCascadingAssignmentDropdowns();
+                setupSprintSelector();
                 setTimeout(function() {
                     setupLightboxFieldToggle();
                     setupCascadingAssignmentDropdowns();
+                    setupSprintSelector();
                 }, 100);
             }
         });
@@ -791,18 +1186,27 @@ function setupLightboxFieldToggle(retryCount) {
         var currentValue = typeSelect.value || desiredType;
         var isMilestone = currentValue === 'milestone' || (task && task.is_milestone);
         var isSprint = currentValue === 'sprint' || (task && (task.task_type === 'sprint' || task.type === 'project'));
+        var isRegularTask = !isMilestone && !isSprint;
         
         console.log('Toggling fields, isMilestone:', isMilestone, 'isSprint:', isSprint, 'value:', typeSelect.value, 'type:', typeof typeSelect.value);
         
         // Scope to the lightbox markup
         var lightbox = document.querySelector('.gantt_cal_light');
         if (!lightbox) return;
+        lightbox.classList.toggle('gantt-show-sprint-picker', isRegularTask);
 
         // Toggle sprint tasks visibility class (prevents flashing)
         if (isSprint) {
             lightbox.classList.add('gantt-show-sprint-tasks');
         } else {
             lightbox.classList.remove('gantt-show-sprint-tasks');
+        }
+        
+        // Toggle milestone class to hide duration via CSS
+        if (isMilestone) {
+            lightbox.classList.add('gantt-milestone-type');
+        } else {
+            lightbox.classList.remove('gantt-milestone-type');
         }
 
         // Hide/show Priority section (select with title="priority")
@@ -817,20 +1221,48 @@ function setupLightboxFieldToggle(retryCount) {
             console.log('Priority select not found');
         }
 
-        // Hide/show only the duration numeric input (keep start date selects visible)
+        // Hide/show duration section for milestones (hide entire duration bar)
         var durationCandidates = lightbox.querySelectorAll(
             '.gantt_time input[type="number"],\
              .gantt_time input[aria-label="Duration"],\
              .gantt_time input[id*="duration"],\
              .gantt_time .gantt_duration input,\
-             .gantt_time .gantt_duration_value'
+             .gantt_time .gantt_duration_value,\
+             .gantt_duration_end_date'
         );
-        console.log('Duration numeric inputs found:', durationCandidates.length);
+        console.log('Duration elements found:', durationCandidates.length);
         durationCandidates.forEach(function(inp){
             if (inp && inp.style) inp.style.display = isMilestone ? 'none' : '';
-            var wrap = inp.closest('.gantt_duration, .gantt_duration_line, .gantt_time_duration');
+            var wrap = inp.closest('.gantt_duration, .gantt_duration_line, .gantt_time_duration, .gantt_duration_end_date');
             if (wrap && wrap !== lightbox) wrap.style.display = isMilestone ? 'none' : '';
         });
+        
+        // Also hide the "Days" label and end date display for milestones
+        var durationEndDate = lightbox.querySelector('.gantt_duration_end_date');
+        if (durationEndDate) {
+            durationEndDate.style.display = isMilestone ? 'none' : '';
+        }
+
+        // Toggle sprint selector visibility for regular tasks only
+        var sprintSelect = lightbox.querySelector('select[title="sprint"]');
+        if (sprintSelect) {
+            var sprintContent = sprintSelect.closest('.gantt_cal_ltext') || sprintSelect.parentElement;
+            var sprintLabel = sprintContent && sprintContent.previousElementSibling && sprintContent.previousElementSibling.classList && sprintContent.previousElementSibling.classList.contains('gantt_cal_lsection')
+                ? sprintContent.previousElementSibling
+                : null;
+            if (sprintContent) {
+                sprintContent.style.display = isRegularTask ? '' : 'none';
+            }
+            if (sprintLabel) {
+                sprintLabel.style.display = isRegularTask ? '' : 'none';
+            }
+            if (!isRegularTask) {
+                sprintSelect.value = '0';
+                if (task) {
+                    task.sprint_id = 0;
+                }
+            }
+        }
     };
     
     // Apply on load
@@ -1062,29 +1494,21 @@ gantt.attachEvent("onLightboxSave", function(id, task, is_new) {
         }
     }
 
-    // sprint must have children
-    if (task.task_type === 'sprint' && (!task.child_tasks || task.child_tasks.length === 0)) {
-        alert("Sprint must contain at least one task.");
-        return false;
-    }
-
     // Ensure owner_id is integer and update assignee label
     if (task.owner_id !== undefined && task.owner_id !== null) {
         task.owner_id = parseInt(task.owner_id) || 0;
         task.assignee = getUserLabelById(task.owner_id);
     }
 
+    var sprintSection = gantt.getLightboxSection("sprint");
+    if (sprintSection && sprintSection.getValue) {
+        task.sprint_id = parseInt(sprintSection.getValue(), 10) || 0;
+    }
+
     // Validation: Only regular tasks must be assigned
     if (task.task_type === 'task' && (!task.owner_id || task.owner_id === 0)) {
         alert('Error: Task must be assigned to a user. Please select someone from the "Assign To" dropdown.');
         console.error('Validation failed: Task must be assigned to a user');
-        return false;
-    }
-
-    // Validation: Sprint must have children (after we read UI selection!)
-    if (task.task_type === 'sprint' && (!task.child_tasks || task.child_tasks.length === 0)) {
-        alert('Error: Sprint must contain at least one task. Please select tasks from the "Tasks" dropdown.');
-        console.error('Validation failed: Sprint must contain at least one task');
         return false;
     }
 
@@ -1688,6 +2112,8 @@ function loadGanttData(data) {
         }
     });
     
+    updateSprintListFromTasks(tasks || []);
+    
     // Update workload panel
     updateWorkloadPanel(tasks, resources);
     
@@ -1695,6 +2121,40 @@ function loadGanttData(data) {
     setTimeout(function() {
         recalcAllParentDurations();
     }, 100);
+}
+
+function handleCreateSprintShortcut() {
+    try {
+        var params = new URLSearchParams(window.location.search || '');
+        if (params.get('create_sprint') === '1') {
+            window.__sprintShortcutMode = true;
+            setTimeout(function() {
+                var initialData = {
+                    text: 'New Sprint',
+                    task_type: 'sprint',
+                    type: 'project',
+                    color: '#9b59b6',
+                    child_tasks: []
+                };
+                var newId = gantt.createTask(initialData, 0);
+                if (newId && gantt.isTaskExists(newId)) {
+                    var newTask = gantt.getTask(newId);
+                    newTask.task_type = 'sprint';
+                    newTask.type = 'project';
+                    newTask.color = '#9b59b6';
+                    newTask.child_tasks = [];
+                    gantt.showLightbox(newId);
+                }
+            }, 600);
+            
+            params.delete('create_sprint');
+            var query = params.toString();
+            var newUrl = window.location.pathname + (query ? '?' + query : '');
+            window.history.replaceState({}, document.title, newUrl);
+        }
+    } catch (err) {
+        console.warn('Failed to handle sprint shortcut', err);
+    }
 }
 
 // Function to populate custom workload panel
@@ -2100,7 +2560,8 @@ function setupGanttEventHandlers() {
                     task_type: task.task_type || 'task',
                     child_tasks: task.child_tasks || [],
                     color: task.color || null,
-                    is_milestone: task.is_milestone ? 1 : 0
+                    is_milestone: task.is_milestone ? 1 : 0,
+                    sprint_id: task.sprint_id || 0
                 })
             })
             .then(response => response.json())
@@ -2110,6 +2571,27 @@ function setupGanttEventHandlers() {
                     // Update the task ID in Gantt with the server-assigned ID
                     gantt.changeTaskId(id, data.id);
                     console.log('Task ID updated from', id, 'to', data.id);
+                    
+                    if (task.task_type === 'sprint') {
+                        window.projectSprints = window.projectSprints || [];
+                        var hasExisting = window.projectSprints.some(function(entry) {
+                            return parseInt(entry.key, 10) === parseInt(data.id, 10);
+                        });
+                        if (!hasExisting) {
+                            window.projectSprints.push({
+                                key: parseInt(data.id, 10),
+                                label: task.text || ('Sprint #' + data.id)
+                            });
+                            refreshSprintSectionOptions();
+                        }
+                    }
+                    
+                    if (window.__inlineSprintFlow && window.__inlineSprintFlow.sprintTempId === id) {
+                        window.__inlineSprintFlow.sprintRealId = data.id;
+                        window.__inlineSprintFlow.sprintTempId = data.id;
+                        window.__inlineSprintFlow.pendingSprintId = data.id;
+                        window.__inlineSprintFlow.pendingSprintName = task.text;
+                    }
                     
             // ✅ If this is a subtask, create the internal link "is a child of"
                     if (isSubtask) {
@@ -2134,6 +2616,24 @@ function setupGanttEventHandlers() {
                         .catch(error => {
                             console.error('Error creating internal link:', error);
                         });
+                    }
+
+                    if (window.__sprintShortcutMode && window.opener && !window.opener.closed && task.task_type === 'sprint') {
+                        try {
+                            window.opener.postMessage({
+                                type: 'sprintCreated',
+                                sprint: {
+                                    id: data.id,
+                    text: task.text
+                                }
+                            }, window.location.origin || '*');
+                        } catch (postErr) {
+                            console.warn('Failed to notify opener about sprint creation', postErr);
+                        }
+                        window.__sprintShortcutMode = false;
+                        setTimeout(function() {
+                            window.close();
+                        }, 400);
                     }
                 } else {
                     console.error('Failed to create task:', data.message);
@@ -2218,7 +2718,8 @@ function setupGanttEventHandlers() {
                 color: task.color || null,
                 child_tasks: task.child_tasks || [],
                 is_milestone: task.is_milestone ? 1 : 0,
-                progress: task.progress || 0
+                progress: task.progress || 0,
+                sprint_id: task.sprint_id || 0
             };
             
             // Debounce: wait for auto-scheduling to complete before saving
@@ -2226,6 +2727,27 @@ function setupGanttEventHandlers() {
             saveTimeout = setTimeout(function() {
                 saveQueuedTasks();
             }, 500);
+        });
+        
+        // Handle lightbox close (any way it closes)
+        gantt.attachEvent("onAfterLightbox", function(closedTaskId) {
+            console.log('onAfterLightbox fired, closedTaskId:', closedTaskId, 'flow:', window.__inlineSprintFlow);
+            if (window.__inlineSprintFlow) {
+                finalizeInlineSprintFlow(closedTaskId);
+            }
+            return true;
+        });
+
+        // Handle cancel button specifically
+        gantt.attachEvent("onLightboxCancel", function(taskId) {
+            console.log('onLightboxCancel fired, taskId:', taskId, 'flow:', window.__inlineSprintFlow);
+            if (window.__inlineSprintFlow) {
+                // Prevent default cancel behavior - we'll handle restoration ourselves
+                setTimeout(function() {
+                    finalizeInlineSprintFlow(taskId);
+                }, 10);
+            }
+            return true;
         });
         
 
@@ -2249,9 +2771,9 @@ function setupGanttEventHandlers() {
                         'Content-Type': 'application/json',
                     },
                     body: JSON.stringify(taskData)
-                })
-                .then(response => response.json())
-                .then(data => {
+            })
+            .then(response => response.json())
+            .then(data => {
                 if (data.result !== 'ok') {
                     console.error('Failed to save task:', data.message);
                         return false;
@@ -2533,7 +3055,7 @@ function reloadGanttDataFromServer() {
         
         // Clear and reload chart with fresh data
         gantt.clearAll();
-        gantt.parse(freshTaskData);
+        loadGanttData(freshTaskData);
         
         // ✅ Restore zoom level and column width after reload
         if (typeof savedZoomLevel === 'number' && savedZoomLevel >= 0 && zoomLevels[savedZoomLevel]) {

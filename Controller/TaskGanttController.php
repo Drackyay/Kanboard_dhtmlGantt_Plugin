@@ -257,7 +257,11 @@ class TaskGanttController extends BaseController
             $this->taskMetadataModel->save($task_id, array('group_id' => (int)$changes['group_id']));
         }
         if (isset($changes['sprint_id'])) {
-            $this->taskMetadataModel->save($task_id, array('sprint_id' => (int)$changes['sprint_id']));
+            $newSprintId = (int) $changes['sprint_id'];
+            $this->taskMetadataModel->save($task_id, array('sprint_id' => $newSprintId));
+            if ($currentTaskType !== 'sprint') {
+                $this->assignTaskToSprint($task_id, $newSprintId);
+            }
         }
 
         
@@ -331,6 +335,14 @@ class TaskGanttController extends BaseController
             // Handle task_type metadata (task, milestone, sprint)
             $createdTaskType = isset($data['task_type']) && $data['task_type'] !== '' ? $data['task_type'] : 'task';
             $this->taskMetadataModel->save($task_id, array('task_type' => $createdTaskType));
+
+            if (isset($data['sprint_id'])) {
+                $newSprintId = (int) $data['sprint_id'];
+                $this->taskMetadataModel->save($task_id, array('sprint_id' => $newSprintId));
+                if ($createdTaskType !== 'sprint') {
+                    $this->assignTaskToSprint($task_id, $newSprintId);
+                }
+            }
 
             // If sprint, create parent-child links immediately
             if ($createdTaskType === 'sprint' && !empty($data['child_tasks']) && is_array($data['child_tasks'])) {
@@ -732,6 +744,79 @@ class TaskGanttController extends BaseController
         }
         
         error_log('DHtmlX Gantt Save - Removed parent-child link between ' . $parentId . ' and ' . $childId);
+    }
+
+    private function assignTaskToSprint(int $taskId, int $newSprintId): void
+    {
+        $currentSprintId = $this->getSprintParentId($taskId);
+
+        if ($currentSprintId && $currentSprintId !== $newSprintId) {
+            $this->removeParentChildLink($currentSprintId, $taskId);
+        }
+
+        if ($newSprintId <= 0) {
+            return;
+        }
+
+        if (!$this->isSprintTask($newSprintId)) {
+            return;
+        }
+
+        if ($currentSprintId === $newSprintId) {
+            return;
+        }
+
+        $linkId = $this->getLinkIdByLabel('is a parent of');
+        if ($linkId) {
+            $this->taskLinkModel->create($newSprintId, $taskId, $linkId);
+            error_log('DHtmlX Gantt Save - Assigned task ' . $taskId . ' to sprint ' . $newSprintId);
+        }
+    }
+
+    private function getSprintParentId(int $childId): ?int
+    {
+        $rows = $this->db->table('task_has_links')
+            ->join('links', 'id', 'link_id')
+            ->columns('links.label', 'task_has_links.task_id', 'task_has_links.opposite_task_id')
+            ->eq('task_has_links.task_id', $childId)
+            ->findAll();
+
+        foreach ($rows as $row) {
+            $label = $row['label'] ?? ($row['links.label'] ?? '');
+            if ($label === 'is a child of') {
+                $parentId = (int) ($row['opposite_task_id'] ?? ($row['task_has_links.opposite_task_id'] ?? 0));
+                if ($parentId > 0 && $this->isSprintTask($parentId)) {
+                    return $parentId;
+                }
+            }
+        }
+
+        $rows = $this->db->table('task_has_links')
+            ->join('links', 'id', 'link_id')
+            ->columns('links.label', 'task_has_links.task_id', 'task_has_links.opposite_task_id')
+            ->eq('task_has_links.opposite_task_id', $childId)
+            ->findAll();
+
+        foreach ($rows as $row) {
+            $label = $row['label'] ?? ($row['links.label'] ?? '');
+            if ($label === 'is a parent of') {
+                $parentId = (int) ($row['task_id'] ?? ($row['task_has_links.task_id'] ?? 0));
+                if ($parentId > 0 && $this->isSprintTask($parentId)) {
+                    return $parentId;
+                }
+            }
+        }
+
+        return null;
+    }
+
+    private function isSprintTask(int $taskId): bool
+    {
+        if ($taskId <= 0) {
+            return false;
+        }
+        $metadata = $this->taskMetadataModel->getAll($taskId);
+        return isset($metadata['task_type']) && $metadata['task_type'] === 'sprint';
     }
     
     // POST /dhtmlxgantt/:project_id/dependency

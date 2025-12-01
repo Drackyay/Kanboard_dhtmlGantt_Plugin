@@ -28,6 +28,14 @@
     display: block !important;
 }
 
+/* Hide duration input for milestones */
+.gantt_cal_light.gantt-milestone-mode .gantt_time input[type="number"],
+.gantt_cal_light.gantt-milestone-mode .gantt_time .gantt_duration input,
+.gantt_cal_light.gantt-milestone-mode .gantt_time .gantt_duration_value,
+.gantt_cal_light.gantt-milestone-mode .gantt_duration_end_date {
+    display: none !important;
+}
+
 /* Normalize control widths/heights inside lightbox */
 .gantt_cal_light .gantt_cal_ltext select,
 .gantt_cal_light .gantt_cal_ltext textarea,
@@ -79,6 +87,40 @@
 
 .gantt_cal_light .sprint-tasks-block {
     margin-top: 12px !important;
+}
+
+.gantt_cal_light .gantt_cal_ltext:has(.gantt-sprint-create-link) {
+    margin-bottom: 26px !important;
+}
+
+.gantt-sprint-create-link {
+    display: block;
+    margin-top: 6px;
+    margin-bottom: 16px;
+    font-size: 12px;
+    line-height: 1.4;
+}
+
+.gantt-sprint-create-link a {
+    text-decoration: underline;
+    color: #1f64c8;
+    cursor: pointer;
+}
+
+.gantt-sprint-create-link a:hover {
+    text-decoration: none;
+}
+
+body.gantt-dark-mode .gantt-sprint-create-link a {
+    color: #8ab4ff !important;
+}
+
+/* Hide duration input for milestones via CSS class */
+.gantt_cal_light.gantt-milestone-type .gantt_time input[type="number"],
+.gantt_cal_light.gantt-milestone-type .gantt_duration,
+.gantt_cal_light.gantt-milestone-type .gantt_duration_value,
+.gantt_cal_light.gantt-milestone-type .gantt_duration_end_date {
+    display: none !important;
 }
 
 .gantt_cal_light.gantt-show-sprint-tasks .gantt_cal_lsection:has(+ .sprint-tasks-block) {
@@ -691,9 +733,63 @@ body.gantt-dark-mode .gantt_task_line:hover .gantt_task_rightside_text {
     color: #ffffff !important;
 }
 
-body.gantt-dark-mode .gantt_link_arrow,
 body.gantt-dark-mode .gantt_line_wrapper div {
-    background-color: #569cd6 !important;
+    background-color: #ffffff !important;
+    border-color: #ffffff !important;
+    background-image: none !important;
+}
+
+body.gantt-dark-mode .gantt_link_line {
+    background-color: #ffffff !important;
+    border-color: #ffffff !important;
+    background-image: none !important;
+}
+
+body.gantt-dark-mode .gantt_link_arrow {
+    background-color: transparent !important;
+}
+
+body.gantt-dark-mode .gantt_link_arrow.gantt_link_arrow_right {
+    border-left-color: #ffffff !important;
+    border-top-color: transparent !important;
+    border-bottom-color: transparent !important;
+}
+
+body.gantt-dark-mode .gantt_link_arrow.gantt_link_arrow_left {
+    border-right-color: #ffffff !important;
+    border-top-color: transparent !important;
+    border-bottom-color: transparent !important;
+}
+
+body.gantt-dark-mode .gantt_link_arrow.gantt_link_arrow_up {
+    border-bottom-color: #ffffff !important;
+    border-left-color: transparent !important;
+    border-right-color: transparent !important;
+}
+
+body.gantt-dark-mode .gantt_link_arrow.gantt_link_arrow_down {
+    border-top-color: #ffffff !important;
+    border-left-color: transparent !important;
+    border-right-color: transparent !important;
+}
+
+body.gantt-dark-mode .gantt_link_point,
+body.gantt-dark-mode .gantt_link_control .gantt_link_point,
+body.gantt-dark-mode .gantt_link_control div,
+body.gantt-dark-mode .gantt_line_wrapper .gantt_line_point {
+    background: #ffffff !important;
+    border-color: #ffffff !important;
+    box-shadow: 0 0 0 1px #ffffff !important;
+}
+
+body.gantt-dark-mode .gantt_line_wrapper .gantt_line_point {
+    box-shadow: 0 0 0 1px #ffffff !important;
+}
+
+body.gantt-dark-mode .gantt_line_wrapper .gantt_line_point:before,
+body.gantt-dark-mode .gantt_line_wrapper .gantt_line_point:after {
+    background-color: #ffffff !important;
+    border-color: #ffffff !important;
 }
 
 body.gantt-dark-mode .gantt_task_progress {

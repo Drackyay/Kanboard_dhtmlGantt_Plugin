@@ -82,6 +82,15 @@
     border-color: transparent transparent transparent #4a8f43 !important;
 }
 
+/* Dark mode: white dependency lines and arrows */
+body.gantt-dark-mode .gantt_task_link .gantt_link_arrow {
+    border-color: transparent transparent transparent #ffffff !important;
+}
+
+body.gantt-dark-mode .gantt_task_link .gantt_line_wrapper div {
+    background-color: #ffffff !important;
+}
+
 /* Any remaining icon elements that need to be replaced */
 .dhx_gantt_icon::before,
 .dhx_gantt_icon:before {
