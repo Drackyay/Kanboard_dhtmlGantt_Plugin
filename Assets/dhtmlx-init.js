@@ -1811,6 +1811,86 @@ gantt.form_blocks["template"] = {
 
         console.log('DHtmlX Gantt initialized successfully');
         
+        // ========== FIX ARROW HEADS WITH JAVASCRIPT ==========
+        // Force all arrow elements to use CSS triangles instead of dots/icons
+        function fixArrowHeads() {
+            document.querySelectorAll('.gantt_link_arrow, div.gantt_link_arrow').forEach(function(arrow) {
+                // Remove any text content or before pseudo element
+                arrow.textContent = '';
+                arrow.innerHTML = '';
+                
+                // Check if dark mode is active
+                var isDarkMode = document.body.classList.contains('gantt-dark-mode');
+                var arrowColor = isDarkMode ? '#ffffff' : '#4a8f43';
+                
+                // Force triangle styling
+                arrow.style.width = '0';
+                arrow.style.height = '0';
+                arrow.style.fontSize = '0';
+                arrow.style.lineHeight = '0';
+                arrow.style.background = 'transparent';
+                arrow.style.backgroundColor = 'transparent';
+                arrow.style.color = 'transparent';
+                arrow.style.borderStyle = 'solid';
+                
+                // Determine arrow direction and apply correct border
+                if (arrow.classList.contains('gantt_link_arrow_right')) {
+                    arrow.style.borderWidth = '7px 0 7px 10px';
+                    arrow.style.borderColor = 'transparent transparent transparent ' + arrowColor;
+                } else if (arrow.classList.contains('gantt_link_arrow_left')) {
+                    arrow.style.borderWidth = '7px 10px 7px 0';
+                    arrow.style.borderColor = 'transparent ' + arrowColor + ' transparent transparent';
+                } else if (arrow.classList.contains('gantt_link_arrow_down')) {
+                    arrow.style.borderWidth = '10px 7px 0 7px';
+                    arrow.style.borderColor = arrowColor + ' transparent transparent transparent';
+                } else if (arrow.classList.contains('gantt_link_arrow_up')) {
+                    arrow.style.borderWidth = '0 7px 10px 7px';
+                    arrow.style.borderColor = 'transparent transparent ' + arrowColor + ' transparent';
+                } else {
+                    // Default to right arrow
+                    arrow.style.borderWidth = '7px 0 7px 10px';
+                    arrow.style.borderColor = 'transparent transparent transparent ' + arrowColor;
+                }
+            });
+            console.log('🔧 Fixed', document.querySelectorAll('.gantt_link_arrow').length, 'arrow heads (dark mode:', document.body.classList.contains('gantt-dark-mode') + ')');
+        }
+
+        // Run on initial load
+        setTimeout(fixArrowHeads, 100);
+        
+        // Run after any chart updates
+        gantt.attachEvent("onAfterLinkAdd", fixArrowHeads);
+        gantt.attachEvent("onAfterLinkUpdate", fixArrowHeads);
+        gantt.attachEvent("onAfterLinkDelete", fixArrowHeads);
+        gantt.attachEvent("onDataRender", fixArrowHeads);
+        gantt.attachEvent("onGanttRender", fixArrowHeads); // Also run after full render
+        
+        // ✅ Use MutationObserver to catch any arrow DOM changes
+        var observer = new MutationObserver(function(mutations) {
+            var hasArrowChanges = false;
+            mutations.forEach(function(mutation) {
+                if (mutation.addedNodes.length) {
+                    mutation.addedNodes.forEach(function(node) {
+                        if (node.nodeType === 1 && (node.classList && (node.classList.contains('gantt_link_arrow') || node.classList.contains('gantt_task_link')))) {
+                            hasArrowChanges = true;
+                        }
+                    });
+                }
+            });
+            if (hasArrowChanges) {
+                setTimeout(fixArrowHeads, 50);
+            }
+        });
+        
+        // Observe the gantt links area
+        var linksArea = document.querySelector('.gantt_links_area');
+        if (linksArea) {
+            observer.observe(linksArea, { childList: true, subtree: true });
+            console.log('✅ Arrow observer initialized');
+        }
+        
+        console.log('✅ Arrow fix initialized');
+        
         // ✅ RESPONSIVE BEHAVIOR: Handle window resize
         var resizeTimeout;
         window.addEventListener('resize', function() {
@@ -3208,6 +3288,9 @@ function fallbackRefresh() {
             
             // Re-render gantt to apply styles
             gantt.render();
+            
+            // ✅ Fix arrows after dark mode toggle
+            setTimeout(fixArrowHeads, 200);
         });
     }
     

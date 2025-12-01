@@ -749,29 +749,7 @@ body.gantt-dark-mode .gantt_link_arrow {
     background-color: transparent !important;
 }
 
-body.gantt-dark-mode .gantt_link_arrow.gantt_link_arrow_right {
-    border-left-color: #ffffff !important;
-    border-top-color: transparent !important;
-    border-bottom-color: transparent !important;
-}
-
-body.gantt-dark-mode .gantt_link_arrow.gantt_link_arrow_left {
-    border-right-color: #ffffff !important;
-    border-top-color: transparent !important;
-    border-bottom-color: transparent !important;
-}
-
-body.gantt-dark-mode .gantt_link_arrow.gantt_link_arrow_up {
-    border-bottom-color: #ffffff !important;
-    border-left-color: transparent !important;
-    border-right-color: transparent !important;
-}
-
-body.gantt-dark-mode .gantt_link_arrow.gantt_link_arrow_down {
-    border-top-color: #ffffff !important;
-    border-left-color: transparent !important;
-    border-right-color: transparent !important;
-}
+/* Note: Arrow head styling (border-based triangles) is in gantt-csp-fix.css */
 
 body.gantt-dark-mode .gantt_link_point,
 body.gantt-dark-mode .gantt_link_control .gantt_link_point,
@@ -828,7 +806,9 @@ body.gantt-dark-mode .dhtmlx-legend-two-column {
 body.gantt-dark-mode .dhtmlx-gantt-toolbar .group-by-block,
 body.gantt-dark-mode .dhtmlx-gantt-toolbar .group-by-block span,
 body.gantt-dark-mode .dhtmlx-gantt-toolbar .group-by-block select,
-body.gantt-dark-mode .dhtmlx-gantt-toolbar .group-by-block i {
+body.gantt-dark-mode .dhtmlx-gantt-toolbar .group-by-block i,
+body.gantt-dark-mode .dhtmlx-gantt-toolbar span[style*="color"],
+body.gantt-dark-mode .dhtmlx-gantt-toolbar i.fa-users {
     color: #f0f0f0 !important;
 }
 
@@ -1007,9 +987,12 @@ body.gantt-dark-mode .dhtmlx-gantt-toolbar .btn:hover {
 }
 
 body.gantt-dark-mode .dhtmlx-legend-item,
+body.gantt-dark-mode .dhtmlx-legend-item span,
+body.gantt-dark-mode .dhtmlx-legend-column strong,
 body.gantt-dark-mode .dhtmlx-stat-label,
-body.gantt-dark-mode .dhtmlx-info-section h3 {
-    color: #cccccc !important;
+body.gantt-dark-mode .dhtmlx-info-section h3,
+body.gantt-dark-mode .dhtmlx-gantt-toolbar .group-by-block span {
+    color: #f0f0f0 !important;
 }
 
 body.gantt-dark-mode .dhtmlx-stat-value {

@@ -65,26 +65,125 @@
     font-size: 14px !important;
 }
 
-/* Link/arrow icons */
+/* ============ COMPLETE ARROW OVERRIDE - HIGHEST PRIORITY ============ */
+/* Completely hide and reset the :before pseudo-element that contains the icon */
+.gantt_task_link div.gantt_link_arrow::before,
+.gantt_task_link div.gantt_link_arrow:before,
 .gantt_link_arrow::before,
 .gantt_link_arrow:before {
-    content: '→' !important;
-    font-family: Arial, sans-serif !important;
-    font-size: 12px !important;
-}
-
-/* Make dependency arrow heads bigger */
-.gantt_task_link .gantt_link_arrow {
+    content: '' !important;
+    display: none !important;
+    font-size: 0 !important;
     width: 0 !important;
     height: 0 !important;
+}
+
+/* Reset and override the arrow element completely */
+.gantt_task_link .gantt_link_arrow,
+.gantt_task_link div.gantt_link_arrow,
+.gantt_link_arrow,
+div.gantt_link_arrow {
+    /* Reset all default properties */
+    width: 0 !important;
+    height: 0 !important;
+    font-size: 0 !important;
+    line-height: 0 !important;
+    font-family: none !important;
+    background: transparent !important;
+    color: transparent !important;
+    /* Now apply border-based triangle */
     border-style: solid !important;
-    border-width: 7px 0 7px 10px !important; /* Bigger arrow head */
+    border-width: 7px 0 7px 10px !important;
     border-color: transparent transparent transparent #4a8f43 !important;
 }
 
+/* Arrow pointing RIGHT */
+.gantt_link_arrow_right,
+.gantt_link_arrow.gantt_link_arrow_right,
+div.gantt_link_arrow.gantt_link_arrow_right {
+    border-width: 7px 0 7px 10px !important;
+    border-color: transparent transparent transparent #4a8f43 !important;
+}
+
+/* Arrow pointing LEFT */
+.gantt_link_arrow_left,
+.gantt_link_arrow.gantt_link_arrow_left,
+div.gantt_link_arrow.gantt_link_arrow_left {
+    border-width: 7px 10px 7px 0 !important;
+    border-color: transparent #4a8f43 transparent transparent !important;
+}
+
+/* Arrow pointing DOWN */
+.gantt_link_arrow_down,
+.gantt_link_arrow.gantt_link_arrow_down,
+div.gantt_link_arrow.gantt_link_arrow_down {
+    border-width: 10px 7px 0 7px !important;
+    border-color: #4a8f43 transparent transparent transparent !important;
+}
+
+/* Arrow pointing UP */
+.gantt_link_arrow_up,
+.gantt_link_arrow.gantt_link_arrow_up,
+div.gantt_link_arrow.gantt_link_arrow_up {
+    border-width: 0 7px 10px 7px !important;
+    border-color: transparent transparent #4a8f43 transparent !important;
+}
+
+/* ============ DARK MODE ARROWS ============ */
 /* Dark mode: white dependency lines and arrows */
-body.gantt-dark-mode .gantt_task_link .gantt_link_arrow {
+/* CRITICAL: Override the global dark mode border-color rule */
+body.gantt-dark-mode .gantt_data_area .gantt_task_link .gantt_link_arrow,
+body.gantt-dark-mode .gantt_container .gantt_link_arrow,
+body.gantt-dark-mode #dhtmlx-gantt-chart .gantt_link_arrow,
+body.gantt-dark-mode .gantt_task_link .gantt_link_arrow,
+body.gantt-dark-mode .gantt_link_arrow,
+body.gantt-dark-mode div.gantt_link_arrow {
     border-color: transparent transparent transparent #ffffff !important;
+    width: 0 !important;
+    height: 0 !important;
+    background: transparent !important;
+    background-color: transparent !important;
+    color: transparent !important;
+}
+
+/* Dark mode: Arrow pointing RIGHT */
+body.gantt-dark-mode .gantt_data_area .gantt_link_arrow_right,
+body.gantt-dark-mode #dhtmlx-gantt-chart .gantt_link_arrow_right,
+body.gantt-dark-mode .gantt_link_arrow_right,
+body.gantt-dark-mode .gantt_link_arrow.gantt_link_arrow_right,
+body.gantt-dark-mode div.gantt_link_arrow.gantt_link_arrow_right {
+    border-width: 7px 0 7px 10px !important;
+    border-color: transparent transparent transparent #ffffff !important;
+}
+
+/* Dark mode: Arrow pointing LEFT */
+body.gantt-dark-mode .gantt_data_area .gantt_link_arrow_left,
+body.gantt-dark-mode #dhtmlx-gantt-chart .gantt_link_arrow_left,
+body.gantt-dark-mode .gantt_link_arrow_left,
+body.gantt-dark-mode .gantt_link_arrow.gantt_link_arrow_left,
+body.gantt-dark-mode div.gantt_link_arrow.gantt_link_arrow_left {
+    border-width: 7px 10px 7px 0 !important;
+    border-color: transparent #ffffff transparent transparent !important;
+}
+
+/* Dark mode: Arrow pointing DOWN */
+body.gantt-dark-mode .gantt_data_area .gantt_link_arrow_down,
+body.gantt-dark-mode #dhtmlx-gantt-chart .gantt_link_arrow_down,
+body.gantt-dark-mode .gantt_link_arrow_down,
+body.gantt-dark-mode .gantt_link_arrow.gantt_link_arrow_down,
+body.gantt-dark-mode div.gantt_link_arrow.gantt_link_arrow_down {
+    border-width: 10px 7px 0 7px !important;
+    border-color: #ffffff transparent transparent transparent !important;
+}
+
+/* Dark mode: Arrow pointing UP */
+body.gantt-dark-mode .gantt_data_area .gantt_link_arrow_up,
+body.gantt-dark-mode #dhtmlx-gantt-chart .gantt_link_arrow_up,
+body.gantt-dark-mode .gantt_link_arrow_up,
+body.gantt-dark-mode .gantt_link_arrow.gantt_link_arrow_up,
+body.gantt-dark-mode div.gantt_link_arrow.gantt_link_arrow_up {
+    border-width: 0 7px 10px 7px !important;
+    border-color: transparent transparent #ffffff transparent !important;
 }
 
 body.gantt-dark-mode .gantt_task_link .gantt_line_wrapper div {

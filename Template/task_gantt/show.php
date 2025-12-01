@@ -62,7 +62,7 @@
             <!-- Group by dropdown -->
             <div style="display: flex; align-items: center; gap: 6px; margin-left: 10px;">
                 <i class="fa fa-users"></i>
-                <span style="font-size: 13px;"><?= t('Group by') ?>:</span>
+                <span style="font-size: 13px; color: #333;"><?= t('Group by') ?>:</span>
                 <select id="dhtmlx-group-by" class="btn" style="height: 32px; padding: 5px 10px; font-size: 13px; min-width: 120px; max-width: 150px;">
                     <option value="none"><?= t('None') ?></option>
                     <option value="assignee"><?= t('Assignee') ?></option>
@@ -141,17 +141,17 @@
                 <div class="dhtmlx-legend-two-column">
                     <!-- Left Column: Task Types -->
                     <div class="dhtmlx-legend-column">
-                        <strong style="font-size: 11px; display: block; margin-bottom: 5px;">
+                        <strong style="font-size: 11px; display: block; margin-bottom: 5px; color: #333;">
                             <?= t('Task Types:') ?>
                         </strong>
                         <div class="dhtmlx-legend">
                             <div class="dhtmlx-legend-item">
                                 <span class="dhtmlx-legend-color" style="background: #27ae60;"></span>
-                                <span><?= t('Milestone') ?></span>
+                                <span style="color: #333;"><?= t('Milestone') ?></span>
                             </div>
                             <div class="dhtmlx-legend-item">
                                 <span class="dhtmlx-legend-color" style="background: #9b59b6;"></span>
-                                <span><?= t('Sprint') ?></span>
+                                <span style="color: #333;"><?= t('Sprint') ?></span>
                             </div>
                         </div>
                     </div>
@@ -169,7 +169,7 @@
                     ?>
                         <div class="dhtmlx-legend-column">
                             <?php if ($chunkIndex === 0): ?>
-                                <strong style="font-size: 11px; display: block; margin-bottom: 5px;">
+                                <strong style="font-size: 11px; display: block; margin-bottom: 5px; color: #333;">
                                     <?= t('Task Categories:') ?>
                                 </strong>
                             <?php else: ?>
@@ -187,7 +187,7 @@
                                         <span class="dhtmlx-legend-color" 
                                               style="background-color: <?= $categoryColor ?> !important; border: 1px solid rgba(0,0,0,0.2); display: inline-block;">
                                         </span>
-                                        <span><?= $this->text->e($category['name']) ?></span>
+                                        <span style="color: #333;"><?= $this->text->e($category['name']) ?></span>
                                     </div>
                                 <?php endforeach; ?>
                             </div>
