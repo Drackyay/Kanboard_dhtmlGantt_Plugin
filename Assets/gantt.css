@@ -574,6 +574,54 @@ body.gantt-dark-mode .gantt-sprint-create-link a {
     border: 1px solid #888 !important; /* Default subtle border on hover */
 }
 
+/* Dark mode - SAME busyness border colors as light mode - HIGH SPECIFICITY */
+body.gantt-dark-mode #dhtmlx-gantt-chart .gantt_task_line.workload-available,
+body.gantt-dark-mode .gantt_container .gantt_task_line.workload-available,
+body.gantt-dark-mode .gantt_data_area .gantt_task_line.workload-available {
+    border: 3px solid #27ae60 !important; /* Green border - same as light mode */
+    border-color: #27ae60 !important;
+}
+
+body.gantt-dark-mode #dhtmlx-gantt-chart .gantt_task_line.workload-busy,
+body.gantt-dark-mode .gantt_container .gantt_task_line.workload-busy,
+body.gantt-dark-mode .gantt_data_area .gantt_task_line.workload-busy {
+    border: 3px solid #f39c12 !important; /* Orange border - same as light mode */
+    border-color: #f39c12 !important;
+}
+
+body.gantt-dark-mode #dhtmlx-gantt-chart .gantt_task_line.workload-overloaded,
+body.gantt-dark-mode .gantt_container .gantt_task_line.workload-overloaded,
+body.gantt-dark-mode .gantt_data_area .gantt_task_line.workload-overloaded {
+    border: 3px solid #e74c3c !important; /* Red border - same as light mode */
+    border-color: #e74c3c !important;
+}
+
+body.gantt-dark-mode #dhtmlx-gantt-chart .gantt_task_line.workload-available:hover,
+body.gantt-dark-mode #dhtmlx-gantt-chart .gantt_task_line.workload-available.gantt_drag_move,
+body.gantt-dark-mode #dhtmlx-gantt-chart .gantt_task_line.workload-available.gantt_selected {
+    border-color: #27ae60 !important;
+}
+
+body.gantt-dark-mode #dhtmlx-gantt-chart .gantt_task_line.workload-busy:hover,
+body.gantt-dark-mode #dhtmlx-gantt-chart .gantt_task_line.workload-busy.gantt_drag_move,
+body.gantt-dark-mode #dhtmlx-gantt-chart .gantt_task_line.workload-busy.gantt_selected {
+    border-color: #f39c12 !important;
+}
+
+body.gantt-dark-mode #dhtmlx-gantt-chart .gantt_task_line.workload-overloaded:hover,
+body.gantt-dark-mode #dhtmlx-gantt-chart .gantt_task_line.workload-overloaded.gantt_drag_move,
+body.gantt-dark-mode #dhtmlx-gantt-chart .gantt_task_line.workload-overloaded.gantt_selected {
+    border-color: #e74c3c !important;
+}
+
+/* Dark mode - hidden busyness borders */
+body.gantt-dark-mode #dhtmlx-gantt-chart.hide-busyness-borders .gantt_task_line.workload-available,
+body.gantt-dark-mode #dhtmlx-gantt-chart.hide-busyness-borders .gantt_task_line.workload-busy,
+body.gantt-dark-mode #dhtmlx-gantt-chart.hide-busyness-borders .gantt_task_line.workload-overloaded {
+    border: 1px solid #555 !important; /* Subtle grey border when hidden in dark mode */
+    border-color: #555 !important;
+}
+
 /* Responsive Design */
 @media (max-width: 768px) {
     .dhtmlx-gantt-toolbar {
@@ -700,12 +748,12 @@ body.gantt-dark-mode .gantt_task_row.odd {
     border-color: #3a3a3a !important;
 }
 
-/* Force all borders inside gantt to be grey */
-body.gantt-dark-mode #dhtmlx-gantt-chart *,
-body.gantt-dark-mode .gantt_container *,
+/* Force all borders inside gantt to be grey - EXCEPT workload task borders */
+body.gantt-dark-mode #dhtmlx-gantt-chart *:not(.workload-available):not(.workload-busy):not(.workload-overloaded),
+body.gantt-dark-mode .gantt_container *:not(.workload-available):not(.workload-busy):not(.workload-overloaded),
 body.gantt-dark-mode .gantt_grid *,
-body.gantt-dark-mode .gantt_data_area *,
-body.gantt-dark-mode .gantt_task_bg * {
+body.gantt-dark-mode .gantt_data_area *:not(.workload-available):not(.workload-busy):not(.workload-overloaded),
+body.gantt-dark-mode .gantt_task_bg *:not(.workload-available):not(.workload-busy):not(.workload-overloaded) {
     border-color: #3a3a3a !important;
 }
 
@@ -1136,11 +1184,50 @@ body.gantt-dark-mode .gantt_delete_btn:hover {
     color: #ffffff !important;
 }
 
-/* Sprint tasks dropdown in dark mode */
+/* Sprint tasks dropdown - light mode */
+.sprint-tasks-block {
+    background: #ffffff;
+}
+
+.sprint-tasks-block input {
+    background: #ffffff;
+    color: #333333;
+    border-color: #cccccc;
+}
+
+/* Sprint task option - light mode default */
+.sprint-task-option {
+    background: transparent;
+    color: #333333;
+}
+
+/* Sprint task option - light mode selected */
+.sprint-task-option.selected {
+    background: #e3f2fd !important;
+    font-weight: bold !important;
+}
+
+/* Sprint task option - light mode hover */
+.sprint-task-option.hovered {
+    background: #f8f9fa !important;
+}
+
+/* Sprint task option - light mode selected + hover */
+.sprint-task-option.selected.hovered {
+    background: #bbdefb !important;
+}
+
+/* Sprint tasks dropdown - dark mode */
 body.gantt-dark-mode .sprint-tasks-block,
-body.gantt-dark-mode .sprint-tasks-block input,
-body.gantt-dark-mode .sprint-tasks-block div {
+body.gantt-dark-mode .sprint-tasks-block input {
     background: #000000 !important;
+    color: #f5f5f5 !important;
+    border-color: #3a3a3a !important;
+}
+
+/* Sprint tasks dropdown container - dark mode */
+body.gantt-dark-mode .sprint-tasks-block > div {
+    background: #0d0d0d !important;
     color: #f5f5f5 !important;
     border-color: #3a3a3a !important;
 }
@@ -1149,11 +1236,36 @@ body.gantt-dark-mode .sprint-tasks-block input::placeholder {
     color: #999999 !important;
 }
 
-/* Sprint task badges (selected tasks) */
-body.gantt-dark-mode .sprint-tasks-block span[style*="background: rgb(33, 150, 243)"] {
-    background: #1a1a1a !important;
+/* Sprint task option - dark mode default */
+body.gantt-dark-mode .sprint-task-option {
+    background: transparent !important;
     color: #f5f5f5 !important;
-    border: 1px solid #3a3a3a !important;
+}
+
+/* Sprint task option - dark mode SELECTED (blue highlight) */
+body.gantt-dark-mode .sprint-task-option.selected {
+    background: #1e3a5f !important;
+    color: #ffffff !important;
+    font-weight: bold !important;
+}
+
+/* Sprint task option - dark mode hover */
+body.gantt-dark-mode .sprint-task-option.hovered {
+    background: #2a2a2a !important;
+}
+
+/* Sprint task option - dark mode selected + hover */
+body.gantt-dark-mode .sprint-task-option.selected.hovered {
+    background: #2a4a6f !important;
+}
+
+/* Sprint task badges (selected tasks shown below search) */
+body.gantt-dark-mode .sprint-tasks-block span[style*="background: rgb(33, 150, 243)"],
+body.gantt-dark-mode .sprint-tasks-block span[style*="background:#2196f3"],
+body.gantt-dark-mode .sprint-tasks-block span[style*="background: #2196f3"] {
+    background: #1e3a5f !important;
+    color: #f5f5f5 !important;
+    border: 1px solid #3a5a8f !important;
 }
 
 /* Settings dropdown menu in dark mode */
@@ -1179,4 +1291,37 @@ body.gantt-dark-mode .dhtmlx-settings-item:hover {
 
 body.gantt-dark-mode .dhtmlx-settings-item input[type="checkbox"] {
     accent-color: #0e639c !important;
+}
+
+/* ============================================
+   HIGHEST PRIORITY - Workload/Busyness Borders
+   Must be at the end to override all other rules
+   ============================================ */
+
+/* Workload borders in dark mode - FINAL OVERRIDE */
+body.gantt-dark-mode .workload-available,
+body.gantt-dark-mode .gantt_task_line.workload-available,
+body.gantt-dark-mode div.gantt_task_line.workload-available {
+    border: 3px solid #27ae60 !important;
+    border-color: #27ae60 !important;
+    border-style: solid !important;
+    border-width: 3px !important;
+}
+
+body.gantt-dark-mode .workload-busy,
+body.gantt-dark-mode .gantt_task_line.workload-busy,
+body.gantt-dark-mode div.gantt_task_line.workload-busy {
+    border: 3px solid #f39c12 !important;
+    border-color: #f39c12 !important;
+    border-style: solid !important;
+    border-width: 3px !important;
+}
+
+body.gantt-dark-mode .workload-overloaded,
+body.gantt-dark-mode .gantt_task_line.workload-overloaded,
+body.gantt-dark-mode div.gantt_task_line.workload-overloaded {
+    border: 3px solid #e74c3c !important;
+    border-color: #e74c3c !important;
+    border-style: solid !important;
+    border-width: 3px !important;
 }

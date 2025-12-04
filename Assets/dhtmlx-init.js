@@ -689,6 +689,7 @@ function beginInlineSprintCreation() {
 
     var sprintId = gantt.createTask(sprintData, 0);
     window.__inlineSprintFlow.sprintTempId = sprintId;
+    console.log('🚀 Created inline sprint with temp ID:', sprintId, 'type:', typeof sprintId);
     
     // Clear the starting flag now that sprint is created
     window.__inlineSprintFlowStarting = false;
@@ -702,9 +703,6 @@ function finalizeInlineSprintFlow(closedTaskId, opts) {
     
     console.log('finalizeInlineSprintFlow called with closedTaskId:', closedTaskId, 'flow:', flow);
     
-    // Always finalize if we have a flow - don't check task ID match
-    // The sprint lightbox was closed (save or cancel), so restore the original task
-    
     // Check if the sprint was saved (flag set in onLightboxSave)
     var sprintWasSaved = flow.sprintSaved === true;
     
@@ -712,25 +710,19 @@ function finalizeInlineSprintFlow(closedTaskId, opts) {
         // Sprint was cancelled - delete the temporary sprint task
         console.log('Sprint was cancelled, deleting temp sprint task:', flow.sprintTempId);
         
-        // Try to delete by temp ID
+        // Try to delete by temp ID (don't send to server since it was never saved)
         if (gantt.isTaskExists(flow.sprintTempId)) {
             try {
-                gantt.deleteTask(flow.sprintTempId);
+                // Use silent delete to avoid server call
+                gantt.silent(function() {
+                    gantt.deleteTask(flow.sprintTempId);
+                });
             } catch (e) {
                 console.warn('Could not delete temp sprint task:', e);
             }
         }
-        
-        // Also try the real ID in case it was changed
-        if (flow.sprintRealId && flow.sprintRealId !== flow.sprintTempId && gantt.isTaskExists(flow.sprintRealId)) {
-            try {
-                gantt.deleteTask(flow.sprintRealId);
-            } catch (e) {
-                console.warn('Could not delete sprint task by real ID:', e);
-            }
-        }
     } else if (sprintWasSaved) {
-        console.log('Sprint was saved successfully, keeping it. pendingSprintId:', flow.pendingSprintId);
+        console.log('Sprint was saved successfully, keeping it.');
     }
 
     var restoredId = ensureInlineOriginTask(flow);
@@ -740,17 +732,19 @@ function finalizeInlineSprintFlow(closedTaskId, opts) {
         var restoredTask = gantt.getTask(restoredId);
         
         // ALWAYS reset to 'task' type when returning from inline sprint creation
-        // The user was creating a regular task, not a sprint
         restoredTask.task_type = 'task';
         restoredTask.type = 'task';
         restoredTask.is_milestone = false;
         console.log('Reset task_type to task for restored task:', restoredId);
         
-        if (flow.pendingSprintId) {
-            restoredTask.sprint_id = flow.pendingSprintId;
-            if (restoredTask.sprint_id) {
-                restoredTask.parent = flow.pendingSprintId;
-            }
+        // Check if we have a pending sprint assignment from the async callback
+        var pendingAssignment = window.__pendingSprintIdForTask;
+        if (pendingAssignment && String(pendingAssignment.taskId) === String(restoredId) && pendingAssignment.sprintId) {
+            console.log('📦 Applying pending sprint assignment:', pendingAssignment.sprintId);
+            restoredTask.sprint_id = pendingAssignment.sprintId;
+            restoredTask.parent = pendingAssignment.sprintId;
+            // DON'T clear the pending assignment yet - let resolveSprintSelectionForTask use it
+            // window.__pendingSprintIdForTask = null;
         }
         
         gantt.updateTask(restoredId);
@@ -764,10 +758,44 @@ function finalizeInlineSprintFlow(closedTaskId, opts) {
         // Set a flag so setupLightboxFieldToggle knows to force 'task' type
         window.__forceTaskTypeOnNextLightbox = true;
         
-        setTimeout(function() {
+        // Delay opening the lightbox to give async sprint creation time to complete
+        // Reset the completion flag
+        window.__inlineSprintCreationComplete = false;
+        
+        var openLightboxForTask = function() {
+            // Check again for pending assignment (in case async just completed)
+            var pendingAssignment2 = window.__pendingSprintIdForTask;
+            if (pendingAssignment2 && String(pendingAssignment2.taskId) === String(taskIdToRestore) && pendingAssignment2.sprintId) {
+                console.log('📦 Late applying pending sprint assignment:', pendingAssignment2.sprintId);
+                if (gantt.isTaskExists(taskIdToRestore)) {
+                    var task = gantt.getTask(taskIdToRestore);
+                    task.sprint_id = pendingAssignment2.sprintId;
+                    task.parent = pendingAssignment2.sprintId;
+                }
+            }
+            
             console.log('Re-opening original task lightbox:', taskIdToRestore, 'with task_type: task');
+            
+            // IMPORTANT: Explicitly select the task before showing lightbox
+            gantt.selectTask(taskIdToRestore);
             gantt.showLightbox(taskIdToRestore);
-        }, 50);
+        };
+        
+        // Wait for sprint creation to complete (max 2 seconds)
+        var waitCount = 0;
+        var maxWait = 20; // 20 * 100ms = 2 seconds max
+        var waitForSprint = function() {
+            waitCount++;
+            if (window.__inlineSprintCreationComplete || waitCount >= maxWait) {
+                console.log('📦 Opening lightbox after wait count:', waitCount, 'complete:', window.__inlineSprintCreationComplete);
+                openLightboxForTask();
+            } else {
+                setTimeout(waitForSprint, 100);
+            }
+        };
+        
+        // Start waiting
+        setTimeout(waitForSprint, 100);
     } else {
         window.__inlineSprintFlow = null;
     }
@@ -849,15 +877,40 @@ function refreshSprintSectionOptions() {
 
 function resolveSprintSelectionForTask(task) {
     if (!task) return 0;
+    
+    console.log('📦 resolveSprintSelectionForTask called for task:', task.id, 'type:', typeof task.id);
+    console.log('📦 pendingAssignment:', window.__pendingSprintIdForTask);
+    
+    // Check for pending sprint assignment from inline sprint creation
+    var pendingAssignment = window.__pendingSprintIdForTask;
+    if (pendingAssignment && pendingAssignment.sprintId) {
+        // Compare as strings to handle type mismatches (temp IDs are numbers, server IDs might be strings)
+        var pendingTaskId = String(pendingAssignment.taskId);
+        var currentTaskId = String(task.id);
+        console.log('📦 Comparing taskIds - pending:', pendingTaskId, 'current:', currentTaskId, 'match:', pendingTaskId === currentTaskId);
+        
+        if (pendingTaskId === currentTaskId) {
+            console.log('📦 resolveSprintSelectionForTask - using pending sprint:', pendingAssignment.sprintId);
+            // Apply to task and clear pending
+            task.sprint_id = pendingAssignment.sprintId;
+            task.parent = pendingAssignment.sprintId;
+            window.__pendingSprintIdForTask = null;
+            return pendingAssignment.sprintId;
+        }
+    }
+    
     if (task.sprint_id) {
+        console.log('📦 resolveSprintSelectionForTask - using task.sprint_id:', task.sprint_id);
         return parseInt(task.sprint_id, 10) || 0;
     }
     if (task.parent && typeof gantt !== 'undefined' && gantt.isTaskExists(task.parent)) {
         var parentTask = gantt.getTask(task.parent);
         if (isSprintTask(parentTask)) {
+            console.log('📦 resolveSprintSelectionForTask - using parent sprint:', parentTask.id);
             return parentTask.id;
         }
     }
+    console.log('📦 resolveSprintSelectionForTask - no sprint found, returning 0');
     return 0;
 }
 
@@ -1454,6 +1507,23 @@ function setupLightboxFieldToggle(retryCount) {
         } else {
             console.log('Priority select not found');
         }
+        
+        // Hide/show Assign To section for sprints (sprints don't need assignees)
+        var assigneeSelect = lightbox.querySelector('select[title="assignee"]');
+        if (assigneeSelect) {
+            var assigneeContent = assigneeSelect.closest('.gantt_cal_ltext') || assigneeSelect.parentElement;
+            var assigneeLabel = assigneeContent && assigneeContent.previousElementSibling && assigneeContent.previousElementSibling.classList && assigneeContent.previousElementSibling.classList.contains('gantt_cal_lsection') ? assigneeContent.previousElementSibling : null;
+            if (assigneeContent) assigneeContent.style.display = isSprint ? 'none' : '';
+            if (assigneeLabel) assigneeLabel.style.display = isSprint ? 'none' : '';
+            // Clear assignee for sprints
+            if (isSprint) {
+                assigneeSelect.value = '0';
+                if (task) {
+                    task.owner_id = 0;
+                }
+            }
+            console.log('Assignee section hidden:', isSprint, 'content:', !!assigneeContent, 'label:', !!assigneeLabel);
+        }
 
         // Hide/show duration section for milestones (hide entire duration bar)
         var durationCandidates = lightbox.querySelectorAll(
@@ -1712,6 +1782,16 @@ function setupCascadingAssignmentDropdowns(retryCount) {
 gantt.attachEvent("onLightboxSave", function(id, task, is_new) {
     console.log('Lightbox save, task:', task);
     console.log('Task type:', task.task_type, 'owner_id:', task.owner_id, 'child_tasks:', task.child_tasks);
+    console.log('🔥 is_new (from DHTMLX):', is_new, 'task.id:', id);
+    
+    // If this is an existing task (ID is a real server ID, not temporary),
+    // and DHTMLX thinks it's new, we need to force it to be treated as an update
+    var isRealServerId = id && typeof id === 'number' && id < 1700000000000;
+    if (is_new && isRealServerId) {
+        console.log('🔥 Forcing existing task', id, 'to be treated as UPDATE, not CREATE');
+        // Mark this task as needing explicit update save
+        window.__forceUpdateTaskId = id;
+    }
       // 🔧 FIX: force update task.task_type from UI dropdown
       var typeSection = gantt.getLightboxSection("type");
       if (typeSection && typeSection.getValue) {
@@ -1783,26 +1863,87 @@ gantt.attachEvent("onLightboxSave", function(id, task, is_new) {
     }
     
     // Check if this is an inline sprint being saved
-    if (window.__inlineSprintFlow && window.__inlineSprintFlow.sprintTempId === id) {
-        console.log('Inline sprint is being saved, marking as saved and will send to server');
+    console.log('🔍 Checking inline sprint flow:', window.__inlineSprintFlow, 'current id:', id, 'type:', typeof id);
+    if (window.__inlineSprintFlow) {
+        console.log('🔍 sprintTempId:', window.__inlineSprintFlow.sprintTempId, 'type:', typeof window.__inlineSprintFlow.sprintTempId);
+        console.log('🔍 Strict match:', window.__inlineSprintFlow.sprintTempId === id);
+        console.log('🔍 String match:', String(window.__inlineSprintFlow.sprintTempId) === String(id));
+    }
+    
+    // Use string comparison to handle type mismatches
+    var isInlineSprint = window.__inlineSprintFlow && 
+                         window.__inlineSprintFlow.sprintTempId && 
+                         String(window.__inlineSprintFlow.sprintTempId) === String(id);
+    
+    if (isInlineSprint) {
+        console.log('✅ Inline sprint is being saved, marking as saved and will send to server');
         window.__inlineSprintFlow.sprintSaved = true;
+        
+        // Store a local reference to the flow for the async callback
+        var currentFlow = window.__inlineSprintFlow;
+        var sprintTempId = id;
+        
+        // Explicitly read all values from lightbox sections to ensure we capture user's input
+        var sprintText = task.text;
+        var sprintOwnerId = task.owner_id || 0;
+        var sprintCategoryId = task.category_id || 0;
+        var sprintPriority = task.priority || 'normal';
+        var sprintChildTasks = task.child_tasks || [];
+        
+        // Try to get fresh values from lightbox sections
+        try {
+            var descSection = gantt.getLightboxSection("description");
+            if (descSection && descSection.getValue) {
+                sprintText = descSection.getValue() || sprintText;
+            }
+            var assigneeSection = gantt.getLightboxSection("assignee");
+            if (assigneeSection && assigneeSection.getValue) {
+                sprintOwnerId = parseInt(assigneeSection.getValue(), 10) || 0;
+            }
+            var categorySection = gantt.getLightboxSection("category");
+            if (categorySection && categorySection.getValue) {
+                sprintCategoryId = parseInt(categorySection.getValue(), 10) || 0;
+            }
+            var prioritySection = gantt.getLightboxSection("priority");
+            if (prioritySection && prioritySection.getValue) {
+                sprintPriority = prioritySection.getValue() || 'normal';
+            }
+            var tasksSection = gantt.getLightboxSection("tasks");
+            if (tasksSection && tasksSection.getValue) {
+                sprintChildTasks = tasksSection.getValue() || [];
+            }
+        } catch (e) {
+            console.warn('Error reading lightbox sections for inline sprint:', e);
+        }
+        
+        console.log('📦 Inline sprint data to save:', {
+            text: sprintText,
+            owner_id: sprintOwnerId,
+            category_id: sprintCategoryId,
+            priority: sprintPriority,
+            child_tasks: sprintChildTasks
+        });
         
         // Send the sprint to the server now (since we skipped it in onAfterTaskAdd)
         var formattedStartDate = gantt.date.date_to_str(gantt.config.date_format)(task.start_date);
         var formattedEndDate = gantt.date.date_to_str(gantt.config.date_format)(task.end_date);
         
+        // Store data for callback
+        var returnTaskId = currentFlow.returnTaskId;
+        var taskSnapshot = currentFlow.taskSnapshot;
+        
         fetch(window.ganttUrls.create, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                text: task.text,
+                text: sprintText,
                 start_date: formattedStartDate,
                 end_date: formattedEndDate,
-                priority: task.priority || 'normal',
-                owner_id: task.owner_id || 0,
-                category_id: task.category_id || 0,
+                priority: sprintPriority,
+                owner_id: sprintOwnerId,
+                category_id: sprintCategoryId,
                 task_type: 'sprint',
-                child_tasks: task.child_tasks || [],
+                child_tasks: sprintChildTasks,
                 color: '#9b59b6',
                 is_milestone: 0,
                 sprint_id: 0
@@ -1812,23 +1953,94 @@ gantt.attachEvent("onLightboxSave", function(id, task, is_new) {
         .then(function(data) {
             console.log('Inline sprint server response:', data);
             if (data.result === 'ok' && data.id) {
-                // Update the task ID and flow tracking
-                gantt.changeTaskId(id, data.id);
-                window.__inlineSprintFlow.sprintRealId = data.id;
-                window.__inlineSprintFlow.pendingSprintId = data.id;
-                window.__inlineSprintFlow.pendingSprintName = task.text;
+                var newSprintId = data.id;
+                
+                // Update the task ID in Gantt
+                if (gantt.isTaskExists(sprintTempId)) {
+                    gantt.changeTaskId(sprintTempId, newSprintId);
+                }
                 
                 // Add to project sprints list
                 window.projectSprints = window.projectSprints || [];
                 var hasExisting = window.projectSprints.some(function(entry) {
-                    return parseInt(entry.key, 10) === parseInt(data.id, 10);
+                    return parseInt(entry.key, 10) === parseInt(newSprintId, 10);
                 });
                 if (!hasExisting) {
                     window.projectSprints.push({
-                        key: parseInt(data.id, 10),
-                        label: task.text || ('Sprint #' + data.id)
+                        key: parseInt(newSprintId, 10),
+                        label: sprintText || ('Sprint #' + newSprintId)
                     });
                     refreshSprintSectionOptions();
+                }
+                
+                console.log('✅ Inline sprint created successfully with ID:', newSprintId);
+                
+                // Check if the original task was assigned to this sprint during creation
+                var originalTaskWasAssigned = false;
+                console.log('📦 Checking assignment - returnTaskId:', returnTaskId, 'type:', typeof returnTaskId);
+                console.log('📦 sprintChildTasks:', sprintChildTasks, 'length:', sprintChildTasks ? sprintChildTasks.length : 0);
+                
+                if (returnTaskId && sprintChildTasks && sprintChildTasks.length > 0) {
+                    var returnTaskIdNum = parseInt(returnTaskId, 10);
+                    console.log('📦 returnTaskIdNum:', returnTaskIdNum);
+                    sprintChildTasks.forEach(function(childId, idx) {
+                        console.log('📦 Child ' + idx + ': ' + childId + ' (parsed: ' + parseInt(childId, 10) + ') match: ' + (parseInt(childId, 10) === returnTaskIdNum));
+                    });
+                    originalTaskWasAssigned = sprintChildTasks.some(function(childId) {
+                        return parseInt(childId, 10) === returnTaskIdNum;
+                    });
+                }
+                
+                console.log('📦 Original task ' + returnTaskId + ' was assigned to sprint: ' + originalTaskWasAssigned);
+                
+                // Store the new sprint ID for the original task (only if it was assigned)
+                if (originalTaskWasAssigned) {
+                    window.__pendingSprintIdForTask = {
+                        taskId: returnTaskId,
+                        sprintId: newSprintId,
+                        sprintName: sprintText
+                    };
+                    console.log('📦 Stored pending sprint assignment:', window.__pendingSprintIdForTask);
+                } else {
+                    // Still store as a "recently created sprint" so user can easily select it
+                    window.__recentlyCreatedSprint = {
+                        sprintId: newSprintId,
+                        sprintName: sprintText
+                    };
+                    console.log('📦 Stored recently created sprint (not auto-assigned):', window.__recentlyCreatedSprint);
+                }
+                
+                // Mark that async sprint creation is complete
+                window.__inlineSprintCreationComplete = true;
+                
+                // If lightbox is already open for the original task, update the sprint dropdown
+                var lightbox = document.querySelector('.gantt_cal_light');
+                if (lightbox && returnTaskId) {
+                    console.log('📦 Lightbox is open, refreshing sprint dropdown with new sprint');
+                    var sprintSelect = lightbox.querySelector('select[title="sprint"]');
+                    if (sprintSelect) {
+                        // Add the new sprint option if not already there
+                        var hasOption = Array.prototype.some.call(sprintSelect.options, function(opt) {
+                            return parseInt(opt.value, 10) === newSprintId;
+                        });
+                        if (!hasOption) {
+                            var option = document.createElement('option');
+                            option.value = newSprintId;
+                            option.textContent = sprintText || ('Sprint #' + newSprintId);
+                            sprintSelect.appendChild(option);
+                        }
+                        // Select the new sprint if original task was assigned to it
+                        if (originalTaskWasAssigned) {
+                            sprintSelect.value = String(newSprintId);
+                            // Also update the task object
+                            var currentTaskId = gantt.getSelectedId();
+                            if (currentTaskId && gantt.isTaskExists(currentTaskId)) {
+                                var currentTask = gantt.getTask(currentTaskId);
+                                currentTask.sprint_id = newSprintId;
+                                currentTask.parent = newSprintId;
+                            }
+                        }
+                    }
                 }
             }
         })
@@ -1901,10 +2113,46 @@ gantt.form_blocks["template"] = {
                     // Don't include the current task itself or other sprints
                     if (t.id === currentTaskId || t.task_type === 'sprint') return;
                     
+                    // Don't include tasks already assigned to ANOTHER sprint
+                    // (but DO include tasks assigned to THIS sprint - they're already selected)
+                    // Also include tasks assigned to sprints that no longer exist
+                    var taskSprintId = parseInt(t.sprint_id, 10) || 0;
+                    var taskParentId = parseInt(t.parent, 10) || 0;
+                    var isAssignedToOtherSprint = false;
+                    
+                    if (taskSprintId > 0 && taskSprintId !== currentTaskId) {
+                        // Task has a sprint_id that's not the current sprint
+                        // But check if that sprint still exists
+                        if (gantt.isTaskExists(taskSprintId)) {
+                            isAssignedToOtherSprint = true;
+                        } else {
+                            // Sprint was deleted, this task is available
+                            console.log('Task', t.id, 'was assigned to deleted sprint', taskSprintId, '- now available');
+                        }
+                    } else if (taskParentId > 0 && taskParentId !== currentTaskId) {
+                        // Check if parent is a sprint that still exists
+                        if (gantt.isTaskExists(taskParentId)) {
+                            var parentTask = gantt.getTask(taskParentId);
+                            if (parentTask && (parentTask.task_type === 'sprint' || parentTask.type === 'project')) {
+                                isAssignedToOtherSprint = true;
+                            }
+                        } else {
+                            // Parent sprint was deleted, this task is available
+                            console.log('Task', t.id, 'parent sprint', taskParentId, 'was deleted - now available');
+                        }
+                    }
+                    
+                    if (isAssignedToOtherSprint) return; // Skip tasks already in another sprint
+                    
                     taskMap[t.id] = t;
                     
                     var option = document.createElement('div');
-                    option.style.cssText = 'padding: 8px 12px; cursor: pointer; border-bottom: 1px solid #f0f0f0;';
+                    // Use CSS classes for styling instead of inline styles
+                    var borderColor = isDarkMode ? '#3a3a3a' : '#f0f0f0';
+                    var textColor = isDarkMode ? '#f5f5f5' : 'inherit';
+                    
+                    option.className = 'sprint-task-option';
+                    option.style.cssText = 'padding: 8px 12px; cursor: pointer; border-bottom: 1px solid ' + borderColor + '; color: ' + textColor + ';';
                     option.textContent = t.text + ' (' + (t.assignee || 'Unassigned') + ')';
                     option.dataset.taskId = t.id;
                     var numericId = parseInt(t.id);
@@ -1913,8 +2161,7 @@ gantt.form_blocks["template"] = {
                     option.dataset.taskGroup = (t.group || 'uncategorized').toLowerCase(); // ✅ Add category for search
                     
                     if (selectedTasks.includes(numericId)) {
-                        option.style.backgroundColor = '#e3f2fd';
-                        option.style.fontWeight = 'bold';
+                        option.classList.add('selected');
                     }
                     
                     option.addEventListener('click', function() {
@@ -1924,13 +2171,11 @@ gantt.form_blocks["template"] = {
                         if (idx === -1) {
                             // Add to selection
                             selectedTasks.push(taskId);
-                            this.style.backgroundColor = '#e3f2fd';
-                            this.style.fontWeight = 'bold';
+                            this.classList.add('selected');
                         } else {
                             // Remove from selection
                             selectedTasks.splice(idx, 1);
-                            this.style.backgroundColor = 'transparent';
-                            this.style.fontWeight = 'normal';
+                            this.classList.remove('selected');
                         }
                         
                         // sync for get_value
@@ -1939,15 +2184,13 @@ gantt.form_blocks["template"] = {
                     });
                     
                     option.addEventListener('mouseover', function() {
-                        if (selectedTasks.indexOf(parseInt(this.dataset.taskId)) === -1) {
-                            this.style.backgroundColor = '#f8f9fa';
+                        if (!this.classList.contains('selected')) {
+                            this.classList.add('hovered');
                         }
                     });
                     
                     option.addEventListener('mouseout', function() {
-                        if (selectedTasks.indexOf(parseInt(this.dataset.taskId)) === -1) {
-                            this.style.backgroundColor = 'transparent';
-                        }
+                        this.classList.remove('hovered');
                     });
                     
                     dropdownPanel.appendChild(option);
@@ -2903,6 +3146,46 @@ function setupGanttEventHandlers() {
         gantt.attachEvent("onAfterTaskAdd", function(id, task) {
             console.log('New task created:', id, task);
             
+            // Check if this is actually an existing task that DHTMLX mistakenly thinks is new
+            // (This happens after the inline sprint flow)
+            if (window.__forceUpdateTaskId === id) {
+                console.log('🔥 Redirecting existing task', id, 'to UPDATE endpoint instead of CREATE');
+                window.__forceUpdateTaskId = null;
+                
+                // Send to update endpoint instead
+                var formattedStartDate = gantt.date.date_to_str(gantt.config.date_format)(task.start_date);
+                var formattedEndDate = gantt.date.date_to_str(gantt.config.date_format)(task.end_date);
+                
+            fetch(window.ganttUrls.update, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        id: id,
+                        text: task.text,
+                        start_date: formattedStartDate,
+                        end_date: formattedEndDate,
+                        priority: task.priority || 'normal',
+                        owner_id: task.owner_id || 0,
+                        category_id: task.category_id || 0,
+                        task_type: task.task_type || 'task',
+                        color: task.color || null,
+                        child_tasks: task.child_tasks || [],
+                        is_milestone: task.is_milestone ? 1 : 0,
+                        progress: task.progress || 0,
+                        sprint_id: task.sprint_id || 0
+                    })
+                })
+                .then(response => response.json())
+                .then(data => {
+                    console.log('🔥 Forced update response:', data);
+                })
+                .catch(error => {
+                    console.error('Error forcing update for task:', error);
+                });
+                
+                return; // Don't proceed with CREATE logic
+            }
+            
             // Check if this is an inline sprint creation in progress
             // If so, don't send to server yet - wait for user to save or cancel
             if (window.__inlineSprintFlow && window.__inlineSprintFlow.sprintTempId === id) {
@@ -3253,6 +3536,22 @@ function setupGanttEventHandlers() {
                 console.log('All task saves completed');
                 var allSuccessful = results.every(function(r) { return r === true; });
                 
+                // DON'T auto-refresh if inline sprint flow is active
+                // (refreshing would destroy the temporary sprint task)
+                if (window.__inlineSprintFlow) {
+                    console.log('⏸️ Skipping auto-refresh - inline sprint flow is active');
+                    updateWorkloadPanel(gantt.getTaskByTime(), []);
+                    return;
+                }
+                
+                // DON'T auto-refresh if lightbox is open (would reset user's changes)
+                var lightboxOpen = document.querySelector('.gantt_cal_light');
+                if (lightboxOpen) {
+                    console.log('⏸️ Skipping auto-refresh - lightbox is open');
+                    updateWorkloadPanel(gantt.getTaskByTime(), []);
+                    return;
+                }
+                
                 if (allSuccessful) {
                     console.log('🔄 Auto-refreshing chart to reflect changes...');
                     // Small delay to ensure backend has processed everything
@@ -3268,6 +3567,62 @@ function setupGanttEventHandlers() {
         // Handle task deletion
         gantt.attachEvent("onBeforeTaskDelete", function(id, task) {
             console.log('Task deletion requested, sending to server:', id, task);
+            
+            // If this is a sprint being deleted, release all child tasks first
+            var isSprintTask = task && (task.task_type === 'sprint' || task.type === 'project');
+            var childTaskIds = [];
+            var childTasksData = []; // Store full task data to restore if needed
+            
+            if (isSprintTask) {
+                // Get all children of this sprint BEFORE any deletion happens
+                var children = gantt.getChildren(id);
+                console.log('🗑️ Deleting sprint, releasing child tasks:', children);
+                
+                // First, collect all child data
+                children.forEach(function(childId) {
+                    if (gantt.isTaskExists(childId)) {
+                        var childTask = gantt.getTask(childId);
+                        childTaskIds.push(childId);
+                        // Store full task data in case we need to restore
+                        childTasksData.push({
+                            id: childId,
+                            text: childTask.text,
+                            start_date: new Date(childTask.start_date),
+                            end_date: new Date(childTask.end_date),
+                            duration: childTask.duration,
+                            progress: childTask.progress || 0,
+                            priority: childTask.priority,
+                            owner_id: childTask.owner_id,
+                            category_id: childTask.category_id,
+                            task_type: childTask.task_type,
+                            color: childTask.color,
+                            assignee: childTask.assignee,
+                            is_milestone: childTask.is_milestone
+                        });
+                        console.log('🗑️ Saved child task data:', childId, childTask.text);
+                    }
+                });
+                
+                // Now update each child to have parent = 0 using silent mode
+                // This prevents DHTMLX from deleting them with the parent
+                gantt.batchUpdate(function() {
+                    children.forEach(function(childId) {
+                        if (gantt.isTaskExists(childId)) {
+                            var childTask = gantt.getTask(childId);
+                            childTask.parent = 0;
+                            childTask.sprint_id = 0;
+                            gantt.updateTask(childId);
+                        }
+                    });
+                });
+                
+                // Store for after-delete restoration
+                window.__releasedChildTasks = {
+                    sprintId: id,
+                    tasks: childTasksData,
+                    taskIds: childTaskIds
+                };
+            }
             
             // Send delete request to server
             fetch(window.ganttUrls.remove, {
@@ -3285,6 +3640,42 @@ function setupGanttEventHandlers() {
                 if (data.result !== 'ok') {
                     console.error('Failed to delete task:', data.message);
                 } else {
+                    // Update the released child tasks on the server
+                    if (childTaskIds.length > 0) {
+                        console.log('🗑️ Updating released tasks on server:', childTaskIds);
+                        childTaskIds.forEach(function(childId) {
+                            if (gantt.isTaskExists(childId)) {
+                                var childTask = gantt.getTask(childId);
+                                var formattedStartDate = gantt.date.date_to_str(gantt.config.date_format)(childTask.start_date);
+                                var formattedEndDate = gantt.date.date_to_str(gantt.config.date_format)(childTask.end_date);
+                                
+                                fetch(window.ganttUrls.update, {
+                                    method: 'POST',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({
+                                        id: childId,
+                                        text: childTask.text,
+                                        start_date: formattedStartDate,
+                                        end_date: formattedEndDate,
+                                        priority: childTask.priority || 'normal',
+                                        owner_id: childTask.owner_id || 0,
+                                        category_id: childTask.category_id || 0,
+                                        task_type: childTask.task_type || 'task',
+                                        color: childTask.color || null,
+                                        child_tasks: [],
+                                        is_milestone: childTask.is_milestone ? 1 : 0,
+                                        progress: childTask.progress || 0,
+                                        sprint_id: 0  // Clear the sprint assignment
+                                    })
+                                })
+                                .then(function(r) { return r.json(); })
+                                .then(function(d) {
+                                    console.log('🗑️ Released task', childId, 'updated:', d);
+                                });
+                            }
+                        });
+                    }
+                    
                     // Update workload after successful deletion
                     setTimeout(function() {
                         updateWorkloadPanel(gantt.getTaskByTime(), []);
@@ -3297,6 +3688,56 @@ function setupGanttEventHandlers() {
             
             // Return true to allow the deletion in the UI
             return true;
+        });
+        
+        // Handle after task deletion - restore child tasks if they were removed
+        gantt.attachEvent("onAfterTaskDelete", function(id, task) {
+            console.log('🗑️ Task deleted:', id);
+            
+            // Check if we have released child tasks to restore
+            if (window.__releasedChildTasks && window.__releasedChildTasks.sprintId === id) {
+                var releasedData = window.__releasedChildTasks;
+                console.log('🗑️ Checking if child tasks need restoration:', releasedData.taskIds);
+                
+                // Check each child task - if it no longer exists, re-add it
+                releasedData.tasks.forEach(function(taskData) {
+                    if (!gantt.isTaskExists(taskData.id)) {
+                        console.log('🗑️ Re-adding deleted child task:', taskData.id, taskData.text);
+                        
+                        // Re-add the task with parent = 0
+                        gantt.addTask({
+                            id: taskData.id,
+                            text: taskData.text,
+                            start_date: taskData.start_date,
+                            end_date: taskData.end_date,
+                            duration: taskData.duration,
+                            progress: taskData.progress,
+                            priority: taskData.priority,
+                            owner_id: taskData.owner_id,
+                            category_id: taskData.category_id,
+                            task_type: taskData.task_type,
+                            color: taskData.color,
+                            assignee: taskData.assignee,
+                            is_milestone: taskData.is_milestone,
+                            sprint_id: 0,
+                            parent: 0,
+                            type: 'task'
+                        });
+                    } else {
+                        // Task still exists, just make sure it's updated
+                        var existingTask = gantt.getTask(taskData.id);
+                        existingTask.parent = 0;
+                        existingTask.sprint_id = 0;
+                        gantt.updateTask(taskData.id);
+                    }
+                });
+                
+                // Clear the stored data
+                window.__releasedChildTasks = null;
+                
+                // Refresh to show the restored tasks
+                gantt.render();
+            }
         });
         
         // Prevent infinite loops
