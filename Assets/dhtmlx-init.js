@@ -642,7 +642,24 @@ function beginInlineSprintCreation() {
 
     flushLightboxValuesToTask(originTaskId);
     var originTask = gantt.getTask(originTaskId);
+    
+    // Check if this is a new task being created (temp ID)
+    var isNewTask = String(originTaskId).indexOf('$') === 0 || 
+                    (typeof originTaskId === 'number' && originTaskId < 0);
+    
+    // For new tasks, ensure task_type is 'task' (user might have changed dropdown to see sprint options)
+    if (isNewTask && originTask.task_type === 'sprint') {
+        console.log('New task was showing as sprint type, resetting to task for snapshot');
+        originTask.task_type = 'task';
+        originTask.type = 'task';
+    }
+    
     var snapshot = captureInlineTaskSnapshot(originTask);
+    // Force snapshot task_type to 'task' for new tasks (they're creating a task, not a sprint)
+    if (isNewTask) {
+        snapshot.task_type = 'task';
+        snapshot.type = 'task';
+    }
 
     var sprintData = {
         text: 'New Sprint',
@@ -721,20 +738,35 @@ function finalizeInlineSprintFlow(closedTaskId, opts) {
     
     if (restoredId && gantt.isTaskExists(restoredId)) {
         var restoredTask = gantt.getTask(restoredId);
+        
+        // ALWAYS reset to 'task' type when returning from inline sprint creation
+        // The user was creating a regular task, not a sprint
+        restoredTask.task_type = 'task';
+        restoredTask.type = 'task';
+        restoredTask.is_milestone = false;
+        console.log('Reset task_type to task for restored task:', restoredId);
+        
         if (flow.pendingSprintId) {
             restoredTask.sprint_id = flow.pendingSprintId;
             if (restoredTask.sprint_id) {
                 restoredTask.parent = flow.pendingSprintId;
             }
-            gantt.updateTask(restoredId);
         }
+        
+        gantt.updateTask(restoredId);
+        
+        // Store the task ID so we can force the type dropdown after lightbox opens
+        var taskIdToRestore = restoredId;
         
         // Clear flow before showing lightbox to prevent re-triggering
         window.__inlineSprintFlow = null;
         
+        // Set a flag so setupLightboxFieldToggle knows to force 'task' type
+        window.__forceTaskTypeOnNextLightbox = true;
+        
         setTimeout(function() {
-            console.log('Re-opening original task lightbox:', restoredId);
-            gantt.showLightbox(restoredId);
+            console.log('Re-opening original task lightbox:', taskIdToRestore, 'with task_type: task');
+            gantt.showLightbox(taskIdToRestore);
         }, 50);
     } else {
         window.__inlineSprintFlow = null;
@@ -1340,9 +1372,25 @@ function setupLightboxFieldToggle(retryCount) {
     
     console.log('Type select found!');
     
+    // Check if we need to force 'task' type (returning from inline sprint creation)
+    var forceTaskType = window.__forceTaskTypeOnNextLightbox === true;
+    if (forceTaskType) {
+        console.log('Forcing task type to "task" (returning from inline sprint creation)');
+        window.__forceTaskTypeOnNextLightbox = false;
+        
+        // Also update the task object to be consistent
+        if (task) {
+            task.task_type = 'task';
+            task.type = 'task';
+            task.is_milestone = false;
+        }
+    }
+    
     // Determine the desired type value to show in the dropdown
     var desiredType = 'task';
-    if (task) {
+    if (forceTaskType) {
+        desiredType = 'task';
+    } else if (task) {
         if (task.task_type) {
             desiredType = task.task_type;
         } else if (task.is_milestone) {
