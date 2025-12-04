@@ -278,6 +278,163 @@ function getUserLabelById(userId) {
     return defaultLabel;
 }
 
+// Helper function to get days in a month (handles leap years)
+function getDaysInMonth(year, month) {
+    // month is 0-indexed (0 = January, 11 = December)
+    return new Date(year, month + 1, 0).getDate();
+}
+
+// Setup date validation for lightbox time selects
+function setupDateValidation(retryCount) {
+    retryCount = retryCount || 0;
+    var lightbox = document.querySelector('.gantt_cal_light');
+    if (!lightbox && retryCount < 10) {
+        setTimeout(function() {
+            setupDateValidation(retryCount + 1);
+        }, 50);
+        return;
+    }
+    if (!lightbox) {
+        return;
+    }
+
+    // Find the time section - DHTMLX Gantt creates .gantt_time_selects containers
+    var timeSelects = lightbox.querySelectorAll('.gantt_time_selects, .gantt_cal_larea .gantt_section_time');
+    
+    if (timeSelects.length === 0) {
+        // Fallback: look for date selects directly
+        var allSelects = lightbox.querySelectorAll('select');
+        // Group selects by their container to handle start/end dates
+        setupDateSelectValidation(lightbox);
+        return;
+    }
+    
+    timeSelects.forEach(function(container) {
+        setupDateSelectValidation(container);
+    });
+}
+
+function setupDateSelectValidation(container) {
+    // Find all select elements in the container
+    var selects = container.querySelectorAll('select');
+    
+    // DHTMLX Gantt time section typically has selects in order:
+    // [day, month, year, hour, minute] for start, then same for end (if duration type)
+    // Or it may use named/titled selects
+    
+    // Look for month selects (usually have 12 options for months)
+    var dateGroups = [];
+    var currentGroup = { day: null, month: null, year: null };
+    var monthOptionCount = [12, 13]; // Some have 12, some have 13 (0-indexed)
+    
+    selects.forEach(function(select, index) {
+        var optionCount = select.options.length;
+        
+        // Try to identify the select type by option count and values
+        if (optionCount >= 28 && optionCount <= 31) {
+            // Likely a day select (28-31 days)
+            if (currentGroup.day) {
+                // Start a new group
+                dateGroups.push(currentGroup);
+                currentGroup = { day: null, month: null, year: null };
+            }
+            currentGroup.day = select;
+        } else if (optionCount === 12 || optionCount === 13) {
+            // Likely a month select
+            currentGroup.month = select;
+        } else if (optionCount >= 2 && optionCount <= 20) {
+            // Check if values look like years (4 digits starting with 19 or 20)
+            var firstValue = select.options[0] ? select.options[0].value : '';
+            if (/^(19|20)\d{2}$/.test(firstValue)) {
+                currentGroup.year = select;
+            }
+        }
+    });
+    
+    // Push the last group
+    if (currentGroup.day || currentGroup.month || currentGroup.year) {
+        dateGroups.push(currentGroup);
+    }
+    
+    // Set up validation for each date group
+    dateGroups.forEach(function(group) {
+        if (group.day && group.month) {
+            setupDateGroupValidation(group);
+        }
+    });
+}
+
+function setupDateGroupValidation(group) {
+    var daySelect = group.day;
+    var monthSelect = group.month;
+    var yearSelect = group.year;
+    
+    // Skip if already set up
+    if (daySelect.dataset.dateValidationSetup === 'true') {
+        return;
+    }
+    daySelect.dataset.dateValidationSetup = 'true';
+    
+    function updateDayOptions() {
+        var month = parseInt(monthSelect.value, 10);
+        var year = yearSelect ? parseInt(yearSelect.value, 10) : new Date().getFullYear();
+        
+        // Handle different month value formats (0-indexed vs 1-indexed, or month names)
+        // DHTMLX typically uses 0-indexed months
+        if (isNaN(month)) {
+            // Month might be a name, find the index
+            var monthIndex = Array.prototype.findIndex.call(monthSelect.options, function(opt) {
+                return opt.selected;
+            });
+            month = monthIndex >= 0 ? monthIndex : 0;
+        }
+        
+        var daysInMonth = getDaysInMonth(year, month);
+        var currentDay = parseInt(daySelect.value, 10);
+        
+        // Store current options format
+        var firstOption = daySelect.options[0];
+        var isZeroPadded = firstOption && firstOption.text.length === 2 && firstOption.text[0] === '0';
+        var valueOffset = firstOption ? parseInt(firstOption.value, 10) : 1;
+        
+        // Get the current number of options
+        var currentMaxDay = daySelect.options.length;
+        
+        if (currentMaxDay === daysInMonth) {
+            // Already correct
+            return;
+        }
+        
+        // Remember selected value
+        var selectedValue = daySelect.value;
+        
+        // Rebuild day options
+        daySelect.innerHTML = '';
+        for (var d = 1; d <= daysInMonth; d++) {
+            var option = document.createElement('option');
+            option.value = d;
+            option.textContent = isZeroPadded && d < 10 ? '0' + d : String(d);
+            daySelect.appendChild(option);
+        }
+        
+        // Restore selected value if valid, otherwise select last day
+        if (parseInt(selectedValue, 10) <= daysInMonth) {
+            daySelect.value = selectedValue;
+        } else {
+            daySelect.value = daysInMonth;
+        }
+    }
+    
+    // Initial update
+    updateDayOptions();
+    
+    // Add event listeners
+    monthSelect.addEventListener('change', updateDayOptions);
+    if (yearSelect) {
+        yearSelect.addEventListener('change', updateDayOptions);
+    }
+}
+
 function setupSprintSelector(retryCount) {
     retryCount = retryCount || 0;
     var lightbox = document.querySelector('.gantt_cal_light');
@@ -498,19 +655,27 @@ function beginInlineSprintCreation() {
         assignee: 'Unassigned'
     };
 
+    // Set flag to prevent onAfterLightbox from finalizing during transition
+    window.__inlineSprintFlowStarting = true;
+    
     window.__inlineSprintFlow = {
         returnTaskId: originTaskId,
         sprintTempId: null,
         sprintRealId: null,
         taskSnapshot: snapshot,
         pendingSprintId: null,
-        pendingSprintName: null
+        pendingSprintName: null,
+        sprintSaved: false  // Track if user saved (vs cancelled) the sprint
     };
     
     gantt.hideLightbox();
 
     var sprintId = gantt.createTask(sprintData, 0);
     window.__inlineSprintFlow.sprintTempId = sprintId;
+    
+    // Clear the starting flag now that sprint is created
+    window.__inlineSprintFlowStarting = false;
+    
     gantt.showLightbox(sprintId);
 }
 
@@ -523,13 +688,32 @@ function finalizeInlineSprintFlow(closedTaskId, opts) {
     // Always finalize if we have a flow - don't check task ID match
     // The sprint lightbox was closed (save or cancel), so restore the original task
     
-    // Delete the temporary sprint task if it still exists and wasn't saved
-    if (flow.sprintTempId && gantt.isTaskExists(flow.sprintTempId)) {
-        try {
-            gantt.deleteTask(flow.sprintTempId);
-        } catch (e) {
-            console.warn('Could not delete temp sprint task:', e);
+    // Check if the sprint was saved (flag set in onLightboxSave)
+    var sprintWasSaved = flow.sprintSaved === true;
+    
+    if (!sprintWasSaved && flow.sprintTempId) {
+        // Sprint was cancelled - delete the temporary sprint task
+        console.log('Sprint was cancelled, deleting temp sprint task:', flow.sprintTempId);
+        
+        // Try to delete by temp ID
+        if (gantt.isTaskExists(flow.sprintTempId)) {
+            try {
+                gantt.deleteTask(flow.sprintTempId);
+            } catch (e) {
+                console.warn('Could not delete temp sprint task:', e);
+            }
         }
+        
+        // Also try the real ID in case it was changed
+        if (flow.sprintRealId && flow.sprintRealId !== flow.sprintTempId && gantt.isTaskExists(flow.sprintRealId)) {
+            try {
+                gantt.deleteTask(flow.sprintRealId);
+            } catch (e) {
+                console.warn('Could not delete sprint task by real ID:', e);
+            }
+        }
+    } else if (sprintWasSaved) {
+        console.log('Sprint was saved successfully, keeping it. pendingSprintId:', flow.pendingSprintId);
     }
 
     var restoredId = ensureInlineOriginTask(flow);
@@ -1103,10 +1287,12 @@ var lightboxObserver = new MutationObserver(function(mutations) {
                 setupLightboxFieldToggle();
                 setupCascadingAssignmentDropdowns();
                 setupSprintSelector();
+                setupDateValidation();
                 setTimeout(function() {
                     setupLightboxFieldToggle();
                     setupCascadingAssignmentDropdowns();
                     setupSprintSelector();
+                    setupDateValidation();
                 }, 100);
             }
         });
@@ -1500,10 +1686,28 @@ gantt.attachEvent("onLightboxSave", function(id, task, is_new) {
         task.assignee = getUserLabelById(task.owner_id);
     }
 
-    var sprintSection = gantt.getLightboxSection("sprint");
-    if (sprintSection && sprintSection.getValue) {
-        task.sprint_id = parseInt(sprintSection.getValue(), 10) || 0;
+    // Read sprint_id directly from DOM select (since we populate it manually via setupSprintSelector)
+    var lightbox = document.querySelector('.gantt_cal_light');
+    var sprintSelect = lightbox ? lightbox.querySelector('select[title="sprint"]') : null;
+    if (sprintSelect) {
+        var selectedSprintId = parseInt(sprintSelect.value, 10);
+        if (!isNaN(selectedSprintId)) {
+            task.sprint_id = selectedSprintId;
+            console.log('🔥 Sprint ID from DOM select:', task.sprint_id);
+            
+            // Also update the Gantt's internal task store to ensure persistence
+            if (gantt.isTaskExists(id)) {
+                var ganttTask = gantt.getTask(id);
+                ganttTask.sprint_id = selectedSprintId;
+                console.log('🔥 Also updated Gantt internal task sprint_id to:', selectedSprintId);
+            }
+        }
     }
+    // Ensure sprint_id is always defined
+    if (task.sprint_id === undefined || task.sprint_id === null) {
+        task.sprint_id = 0;
+    }
+    console.log('🔥 Final sprint_id for task', id, ':', task.sprint_id);
 
     // Validation: Only regular tasks must be assigned
     if (task.task_type === 'task' && (!task.owner_id || task.owner_id === 0)) {
@@ -1529,6 +1733,62 @@ gantt.attachEvent("onLightboxSave", function(id, task, is_new) {
         task.color = getCategoryColorHex(task.category_id);
         console.log('Set regular Task with color', task.color);
     }
+    
+    // Check if this is an inline sprint being saved
+    if (window.__inlineSprintFlow && window.__inlineSprintFlow.sprintTempId === id) {
+        console.log('Inline sprint is being saved, marking as saved and will send to server');
+        window.__inlineSprintFlow.sprintSaved = true;
+        
+        // Send the sprint to the server now (since we skipped it in onAfterTaskAdd)
+        var formattedStartDate = gantt.date.date_to_str(gantt.config.date_format)(task.start_date);
+        var formattedEndDate = gantt.date.date_to_str(gantt.config.date_format)(task.end_date);
+        
+        fetch(window.ganttUrls.create, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                text: task.text,
+                start_date: formattedStartDate,
+                end_date: formattedEndDate,
+                priority: task.priority || 'normal',
+                owner_id: task.owner_id || 0,
+                category_id: task.category_id || 0,
+                task_type: 'sprint',
+                child_tasks: task.child_tasks || [],
+                color: '#9b59b6',
+                is_milestone: 0,
+                sprint_id: 0
+            })
+        })
+        .then(function(response) { return response.json(); })
+        .then(function(data) {
+            console.log('Inline sprint server response:', data);
+            if (data.result === 'ok' && data.id) {
+                // Update the task ID and flow tracking
+                gantt.changeTaskId(id, data.id);
+                window.__inlineSprintFlow.sprintRealId = data.id;
+                window.__inlineSprintFlow.pendingSprintId = data.id;
+                window.__inlineSprintFlow.pendingSprintName = task.text;
+                
+                // Add to project sprints list
+                window.projectSprints = window.projectSprints || [];
+                var hasExisting = window.projectSprints.some(function(entry) {
+                    return parseInt(entry.key, 10) === parseInt(data.id, 10);
+                });
+                if (!hasExisting) {
+                    window.projectSprints.push({
+                        key: parseInt(data.id, 10),
+                        label: task.text || ('Sprint #' + data.id)
+                    });
+                    refreshSprintSectionOptions();
+                }
+            }
+        })
+        .catch(function(error) {
+            console.error('Error creating inline sprint:', error);
+        });
+    }
+    
     return true; // Allow saving
 });
 
@@ -2593,7 +2853,19 @@ function setupGanttEventHandlers() {
     
         // Handle task creation
         gantt.attachEvent("onAfterTaskAdd", function(id, task) {
-            console.log('New task created, sending to server:', id, task);
+            console.log('New task created:', id, task);
+            
+            // Check if this is an inline sprint creation in progress
+            // If so, don't send to server yet - wait for user to save or cancel
+            if (window.__inlineSprintFlow && window.__inlineSprintFlow.sprintTempId === id) {
+                console.log('Inline sprint creation detected, deferring server save until user confirms');
+                // Don't mark as successfully created yet - wait for actual save
+                // Don't send to server yet
+                return;
+            }
+            
+            // Mark this task as successfully created (used by onAfterLightbox to decide whether to remove unsaved tasks)
+            successfullyCreatedTaskIds[id] = true;
             
             // Apply color based on type
             if (task.is_milestone) {
@@ -2786,6 +3058,15 @@ function setupGanttEventHandlers() {
             }
         
             // Queue save to backend - include all fields with time precision formatting
+            var sprintIdToSave = task.sprint_id;
+            // Also check if we have it stored in a temporary property (set during lightbox save)
+            if (sprintIdToSave === undefined || sprintIdToSave === null) {
+                sprintIdToSave = 0;
+            }
+            sprintIdToSave = parseInt(sprintIdToSave, 10) || 0;
+            
+            console.log('📦 Queueing save for task', id, '- sprint_id:', sprintIdToSave, 'task.sprint_id:', task.sprint_id);
+            
             tasksToSave[id] = {
                 id: id,
                 text: task.text,
@@ -2793,13 +3074,13 @@ function setupGanttEventHandlers() {
                 end_date:   gantt.date.date_to_str(gantt.config.date_format)(task.end_date),
                 priority: task.priority,
                 owner_id: task.owner_id || 0,
-                category_id: task.category_id || 0,  // ✅ FIX: Save category_id
+                category_id: task.category_id || 0,
                 task_type: task.task_type || 'task',
                 color: task.color || null,
                 child_tasks: task.child_tasks || [],
                 is_milestone: task.is_milestone ? 1 : 0,
                 progress: task.progress || 0,
-                sprint_id: task.sprint_id || 0
+                sprint_id: sprintIdToSave
             };
             
             // Debounce: wait for auto-scheduling to complete before saving
@@ -2809,26 +3090,73 @@ function setupGanttEventHandlers() {
             }, 500);
         });
         
+        // Track tasks that were successfully created (not just saved attempt)
+        var successfullyCreatedTaskIds = {};
+        
         // Handle lightbox close (any way it closes)
         gantt.attachEvent("onAfterLightbox", function(closedTaskId) {
-            console.log('onAfterLightbox fired, closedTaskId:', closedTaskId, 'flow:', window.__inlineSprintFlow);
-            if (window.__inlineSprintFlow) {
+            console.log('onAfterLightbox fired, closedTaskId:', closedTaskId, 'flow:', window.__inlineSprintFlow, 'starting:', window.__inlineSprintFlowStarting);
+            
+            // Skip if we're in the middle of starting the inline sprint flow
+            // (hideLightbox triggers this before we create the sprint task)
+            if (window.__inlineSprintFlowStarting) {
+                console.log('Skipping finalization - inline sprint flow is still starting');
+                return true;
+            }
+            
+            if (window.__inlineSprintFlow && window.__inlineSprintFlow.sprintTempId) {
+                // Only finalize if the sprint task was actually created
                 finalizeInlineSprintFlow(closedTaskId);
+            } else if (closedTaskId) {
+                // Check if this is a temporary task that wasn't successfully created
+                var isNewTask = isTemporaryTaskId(closedTaskId);
+                var wasSuccessfullyCreated = successfullyCreatedTaskIds[closedTaskId];
+                
+                if (isNewTask && !wasSuccessfullyCreated && gantt.isTaskExists(closedTaskId)) {
+                    console.log('Removing unsaved new task from chart (closed without saving):', closedTaskId);
+                    // Use setTimeout to avoid issues with Gantt's internal state
+                    setTimeout(function() {
+                        if (gantt.isTaskExists(closedTaskId)) {
+                            gantt.deleteTask(closedTaskId);
+                        }
+                    }, 50);
+                }
+                
+                // Clean up tracking
+                delete successfullyCreatedTaskIds[closedTaskId];
             }
             return true;
         });
 
         // Handle cancel button specifically
         gantt.attachEvent("onLightboxCancel", function(taskId) {
-            console.log('onLightboxCancel fired, taskId:', taskId, 'flow:', window.__inlineSprintFlow);
-            if (window.__inlineSprintFlow) {
-                // Prevent default cancel behavior - we'll handle restoration ourselves
+            console.log('onLightboxCancel fired, taskId:', taskId, 'flow:', window.__inlineSprintFlow, 'starting:', window.__inlineSprintFlowStarting);
+            
+            // Skip if we're in the middle of starting the inline sprint flow
+            if (window.__inlineSprintFlowStarting) {
+                console.log('Skipping cancel handling - inline sprint flow is still starting');
+                return true;
+            }
+            
+            if (window.__inlineSprintFlow && window.__inlineSprintFlow.sprintTempId) {
+                // Only finalize if the sprint task was actually created
                 setTimeout(function() {
                     finalizeInlineSprintFlow(taskId);
                 }, 10);
             }
+            // Note: Unsaved task cleanup is handled by onAfterLightbox
             return true;
         });
+        
+        // Helper function to check if task ID is temporary (new/unsaved)
+        function isTemporaryTaskId(taskId) {
+            if (!taskId) return false;
+            var idStr = String(taskId);
+            // DHTMLX Gantt uses $ prefix for temporary tasks, or negative numbers
+            return idStr.indexOf('$') === 0 || 
+                   (typeof taskId === 'number' && taskId < 0) ||
+                   idStr.startsWith('new_');
+        }
         
 
         
@@ -2836,7 +3164,7 @@ function setupGanttEventHandlers() {
         function saveQueuedTasks() {
             if (Object.keys(tasksToSave).length === 0) return;
             
-            console.log('Saving queued tasks:', Object.keys(tasksToSave));
+            console.log('💾 Saving queued tasks:', Object.keys(tasksToSave));
             
             // Collect all save promises
             var savePromises = [];
@@ -2844,6 +3172,7 @@ function setupGanttEventHandlers() {
             // Save each task
             for (var taskId in tasksToSave) {
                 var taskData = tasksToSave[taskId];
+                console.log('📤 Sending to server - Task ID:', taskId, 'sprint_id:', taskData.sprint_id, 'Full data:', JSON.stringify(taskData));
                 
                 var savePromise = fetch(window.ganttUrls.update, {
                     method: 'POST',
